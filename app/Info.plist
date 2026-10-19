@@ -10,10 +10,13 @@
 	<true/>
 	<key>CFBundleGetInfoString</key>
 	<string>Stream games and other applications from another PC</string>
-	<!-- What the dock, the menu bar and the About box call this. The
-	     executable keeps its name because Dusk looks for it by path, and
-	     the bundle identifier keeps its because it is load-bearing: see
-	     the note below. -->
+	<!-- What the dock, the menu bar and the About box call this. Both keys,
+	     and only once each: there was a second CFBundleDisplayName further
+	     down this file, and because a later duplicate wins, setting only the
+	     one up here left the dock still saying Moonlight. The executable
+	     keeps its name because Dusk looks for it by path, and the bundle
+	     identifier keeps its because it is load-bearing: see the note
+	     below. -->
 	<key>CFBundleName</key>
 	<string>Dusk Stream</string>
 	<key>CFBundleDisplayName</key>
@@ -65,8 +68,6 @@
 	<string>VERSION</string>
 	<key>CFBundleShortVersionString</key>
 	<string>VERSION</string>
-	<key>CFBundleDisplayName</key>
-	<string>Moonlight</string>
     <key>LSApplicationCategoryType</key>
 	<string>public.app-category.games</string>
 </dict>
