@@ -382,6 +382,13 @@ bool SdlInputHandler::isSystemKeyCaptureActive()
     return true;
 }
 
+void SdlInputHandler::warpCursorTo(int x, int y)
+{
+    if (m_Window != nullptr) {
+        SDL_WarpMouseInWindow(m_Window, x, y);
+    }
+}
+
 void SdlInputHandler::setCaptureActive(bool active)
 {
     if (active) {

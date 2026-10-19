@@ -2,6 +2,8 @@
 #include "settings/streamingpreferences.h"
 #include "streaming/streamutils.h"
 #include "backend/richpresencemanager.h"
+#include "streaming/duskchannel.h"
+#include "video/duskoverlay.h"
 
 #include <Limelight.h>
 #include "SDL_compat.h"
@@ -576,6 +578,7 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_QtWindow(nullptr),
       m_UnexpectedTermination(true), // Failure prior to streaming is unexpected
       m_InputHandler(nullptr),
+      m_DuskChannel(nullptr),
       m_MouseEmulationRefCount(0),
       m_FlushingWindowEventsRef(0),
       m_ShouldExit(false),
@@ -1957,6 +1960,10 @@ void Session::exec()
     // Toggle the stats overlay if requested by the user
     m_OverlayManager.setOverlayState(Overlay::OverlayDebug, m_Preferences->showPerformanceOverlay);
 
+    // Reach back to Dusk if it launched us. Opened only once the stream is
+    // really up, so every path that leaves the loop below also closes it.
+    m_DuskChannel = DuskChannel::startFromEnvironment();
+
     // Switch to async logging mode when we enter the SDL loop
     StreamUtils::enterAsyncLoggingMode();
 
@@ -2035,6 +2042,12 @@ void Session::exec()
             case SDL_CODE_GAMECONTROLLER_SET_ADAPTIVE_TRIGGERS:
                 m_InputHandler->setAdaptiveTriggers((uint16_t)(uintptr_t)event.user.data1,
                                                     (DualSenseOutputReport *)event.user.data2);
+                break;
+            case SDL_CODE_DUSK_SHOW_OVERLAY:
+                m_OverlayManager.getMenu().setMenuOpen(true);
+                break;
+            case SDL_CODE_DUSK_HOST_DISPLAY:
+                m_OverlayManager.getMenu().switchHostDisplay((int)(intptr_t)event.user.data1);
                 break;
             default:
                 SDL_assert(false);
@@ -2308,6 +2321,11 @@ void Session::exec()
     }
 
 DispatchDeferredCleanup:
+    // Tell Dusk first: it is waiting on this to put the card back, and
+    // nothing below needs the channel.
+    delete m_DuskChannel;
+    m_DuskChannel = nullptr;
+
     // Switch back to synchronous logging mode
     StreamUtils::exitAsyncLoggingMode();
 

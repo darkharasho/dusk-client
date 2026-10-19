@@ -1,4 +1,5 @@
 #include "duskoverlay.h"
+#include "streaming/duskchannel.h"
 #include "overlaymanager.h"
 #include "path.h"
 #include "streaming/session.h"
@@ -41,6 +42,10 @@ Menu::Menu(OverlayManager* manager) :
     m_RestoreCapture(false),
     m_HandleX(0.975f),
     m_HandleY(0.025f),
+    m_VideoX0(0.0f),
+    m_VideoY0(0.0f),
+    m_VideoX1(1.0f),
+    m_VideoY1(1.0f),
     m_Dragging(false),
     m_DragMoved(false),
     m_DragOffsetX(0),
@@ -96,6 +101,41 @@ void Menu::setWindowSize(int width, int height)
     }
 }
 
+void Menu::setVideoRect(int x, int y, int w, int h, int surfaceWidth, int surfaceHeight)
+{
+    if (w <= 0 || h <= 0 || surfaceWidth <= 0 || surfaceHeight <= 0) {
+        return;
+    }
+
+    m_VideoX0 = SDL_clamp((float)x / surfaceWidth, 0.0f, 1.0f);
+    m_VideoY0 = SDL_clamp((float)y / surfaceHeight, 0.0f, 1.0f);
+    m_VideoX1 = SDL_clamp((float)(x + w) / surfaceWidth, m_VideoX0, 1.0f);
+    m_VideoY1 = SDL_clamp((float)(y + h) / surfaceHeight, m_VideoY0, 1.0f);
+}
+
+void Menu::videoIn(int spaceW, int spaceH, int* x0, int* y0, int* x1, int* y1) const
+{
+    *x0 = (int)(m_VideoX0 * spaceW);
+    *y0 = (int)(m_VideoY0 * spaceH);
+    *x1 = (int)(m_VideoX1 * spaceW);
+    *y1 = (int)(m_VideoY1 * spaceH);
+}
+
+void Menu::anchorIn(int spaceW, int spaceH, int itemW, int itemH, int* x, int* y) const
+{
+    // Anchored inside the video, not the window. When the host's aspect
+    // ratio does not match the window there are bars down the side, and
+    // while the stream holds the mouse the pointer cannot leave the video
+    // image — so a handle sitting in a bar is one the user can see and
+    // never reach. Hovering it is what frees the cursor, so being out
+    // there also locks itself out: the hotkey becomes the only way in.
+    int x0, y0, x1, y1;
+    videoIn(spaceW, spaceH, &x0, &y0, &x1, &y1);
+
+    *x = SDL_clamp(x0 + (int)(m_HandleX * (x1 - x0)), x0, SDL_max(x0, x1 - itemW));
+    *y = SDL_clamp(y0 + (int)(m_HandleY * (y1 - y0)), y0, SDL_max(y0, y1 - itemH));
+}
+
 bool Menu::openFont()
 {
     if (m_Font != nullptr && m_TitleFont != nullptr) {
@@ -137,7 +177,40 @@ int Menu::menuWidth() const
 int Menu::rowCount() const
 {
     // The display page carries a Back row on the end.
-    return m_Page == PageMain ? ActionMax : k_DisplayCount + 1;
+    return m_Page == PageMain ? rowOf(ActionMax) : k_DisplayCount + 1;
+}
+
+bool Menu::actionShown(int action) const
+{
+    if (action == ActionOpenDusk) {
+        Session* session = Session::get();
+        return session != nullptr && session->getDuskChannel() != nullptr;
+    }
+    return true;
+}
+
+int Menu::actionAt(int row) const
+{
+    for (int action = 0; action < ActionMax; action++) {
+        if (!actionShown(action)) {
+            continue;
+        }
+        if (row-- == 0) {
+            return action;
+        }
+    }
+    return ActionMax;
+}
+
+int Menu::rowOf(int action) const
+{
+    int row = 0;
+    for (int i = 0; i < action; i++) {
+        if (actionShown(i)) {
+            row++;
+        }
+    }
+    return row;
 }
 
 int Menu::menuHeight() const
@@ -148,8 +221,7 @@ int Menu::menuHeight() const
 void Menu::handleOrigin(int displayWidth, int displayHeight, int surfaceWidth,
                         int surfaceHeight, int* x, int* y)
 {
-    *x = SDL_clamp((int)(m_HandleX * displayWidth), 0, SDL_max(0, displayWidth - surfaceWidth));
-    *y = SDL_clamp((int)(m_HandleY * displayHeight), 0, SDL_max(0, displayHeight - surfaceHeight));
+    anchorIn(displayWidth, displayHeight, surfaceWidth, surfaceHeight, x, y);
 }
 
 void Menu::menuOrigin(int displayWidth, int displayHeight, int surfaceWidth,
@@ -162,14 +234,17 @@ void Menu::menuOrigin(int displayWidth, int displayHeight, int surfaceWidth,
     int handleX, handleY;
     handleOrigin(displayWidth, displayHeight, handleW, handleH, &handleX, &handleY);
 
-    *x = SDL_clamp(handleX + handleW - surfaceWidth, 0, SDL_max(0, displayWidth - surfaceWidth));
-    *y = SDL_clamp(handleY + handleH + 6, 0, SDL_max(0, displayHeight - surfaceHeight));
+    int x0, y0, x1, y1;
+    videoIn(displayWidth, displayHeight, &x0, &y0, &x1, &y1);
+
+    *x = SDL_clamp(handleX + handleW - surfaceWidth, x0, SDL_max(x0, x1 - surfaceWidth));
+    *y = SDL_clamp(handleY + handleH + 6, y0, SDL_max(y0, y1 - surfaceHeight));
 }
 
 bool Menu::pointInHandle(int x, int y) const
 {
-    int hx = SDL_clamp((int)(m_HandleX * m_WindowWidth), 0, SDL_max(0, m_WindowWidth - HANDLE_SIZE));
-    int hy = SDL_clamp((int)(m_HandleY * m_WindowHeight), 0, SDL_max(0, m_WindowHeight - HANDLE_SIZE));
+    int hx, hy;
+    anchorIn(m_WindowWidth, m_WindowHeight, HANDLE_SIZE, HANDLE_SIZE, &hx, &hy);
     return x >= hx && x < hx + HANDLE_SIZE && y >= hy && y < hy + HANDLE_SIZE;
 }
 
@@ -210,8 +285,28 @@ void Menu::setEngaged(bool engaged)
         // handle. Remember what we interrupted so we restore their state
         // rather than assuming they were captured.
         m_RestoreCapture = session->m_InputHandler->isCaptureActive();
+
+        // A stream holding the mouse in relative mode has no pointer
+        // position, so nothing can be hovered and the hotkey is the only
+        // way in. Coming out of it the cursor reappears wherever it was
+        // parked before the stream started — which is why the handle could
+        // be seen and still not be clicked or dragged. Put the cursor on
+        // the handle instead, so one keypress hands the overlay to the
+        // mouse rather than making the whole thing keyboard-only.
+        bool relativeCapture = m_RestoreCapture
+                               && !session->m_InputHandler->overlayPointerUsable();
+
         if (m_RestoreCapture) {
             session->m_InputHandler->setCaptureActive(false);
+        }
+
+        if (relativeCapture) {
+            int hx, hy;
+            anchorIn(m_WindowWidth, m_WindowHeight, HANDLE_SIZE, HANDLE_SIZE, &hx, &hy);
+            session->m_InputHandler->warpCursorTo(hx + HANDLE_SIZE / 2,
+                                                  hy + HANDLE_SIZE / 2);
+            m_HandleHot = true;
+            repaintHandle();
         }
     }
     else if (m_RestoreCapture) {
@@ -236,6 +331,12 @@ void Menu::sendHostHotkey(short keyCode)
     LiSendKeyboardEvent(0xA0, KEY_ACTION_UP, MODIFIER_CTRL | MODIFIER_ALT);
     LiSendKeyboardEvent(0xA4, KEY_ACTION_UP, MODIFIER_CTRL);
     LiSendKeyboardEvent(0xA2, KEY_ACTION_UP, 0);
+}
+
+void Menu::switchHostDisplay(int index)
+{
+    // Sunshine listens for Ctrl+Alt+Shift+F1..F12 on the host.
+    sendHostHotkey(0x70 /* VK_F1 */ + index);
 }
 
 void Menu::setMenuOpen(bool open)
@@ -288,7 +389,7 @@ const char* Menu::labelFor(int index) const
         return label;
     }
 
-    switch (index) {
+    switch (actionAt(index)) {
     case ActionStats:
         return (session != nullptr &&
                 session->getOverlayManager().isOverlayEnabled(OverlayDebug))
@@ -298,6 +399,7 @@ const char* Menu::labelFor(int index) const
     case ActionFullScreen:   return "Toggle full screen";
     case ActionReleaseMouse: return "Release the mouse";
     case ActionMinimize:     return "Minimise";
+    case ActionOpenDusk:     return "Open Dusk";
     case ActionDisconnect:   return "Disconnect";
     default:                 return "";
     }
@@ -310,18 +412,17 @@ void Menu::activate(int index)
     if (m_Page == PageDisplays) {
         if (index >= k_DisplayCount) {
             m_Page = PageMain;
-            m_Selected = ActionSwitchDisplay;
+            m_Selected = rowOf(ActionSwitchDisplay);
             repaintMenu();
             return;
         }
 
-        // Sunshine listens for Ctrl+Alt+Shift+F1..F12 on the host.
-        sendHostHotkey(0x70 /* VK_F1 */ + index);
+        switchHostDisplay(index);
         setMenuOpen(false);
         return;
     }
 
-    switch (index) {
+    switch (actionAt(index)) {
     case ActionStats:
         if (session != nullptr) {
             OverlayManager& overlays = session->getOverlayManager();
@@ -362,8 +463,35 @@ void Menu::activate(int index)
         }
         break;
 
+    case ActionOpenDusk:
+        // Dusk raises its window; getting the stream out of the way is
+        // ours to do. Leave the mouse free so it can reach Dusk, and step
+        // out of full screen's way, which would otherwise cover the window
+        // Dusk just raised.
+        setMenuOpen(false);
+        m_RestoreCapture = false;
+        if (Session::s_ActiveSession != nullptr) {
+            if (Session::s_ActiveSession->m_InputHandler != nullptr) {
+                Session::s_ActiveSession->m_InputHandler->setCaptureActive(false);
+            }
+            if (Session::s_ActiveSession->m_Window != nullptr &&
+                (SDL_GetWindowFlags(Session::s_ActiveSession->m_Window) & SDL_WINDOW_FULLSCREEN)) {
+                SDL_MinimizeWindow(Session::s_ActiveSession->m_Window);
+            }
+        }
+        if (session != nullptr && session->getDuskChannel() != nullptr) {
+            session->getDuskChannel()->sendOverlayAction("settings");
+        }
+        break;
+
     case ActionDisconnect:
         setMenuOpen(false);
+        // Tell Dusk why the stream is about to end, then end it anyway.
+        // Dusk answers with a disconnect of its own, but the button must
+        // not depend on a round trip to a process that may be wedged.
+        if (session != nullptr && session->getDuskChannel() != nullptr) {
+            session->getDuskChannel()->sendOverlayAction("disconnect");
+        }
         {
             // Same path as the quit key combo, so there is one teardown.
             SDL_Event event;
@@ -415,7 +543,7 @@ bool Menu::handleKeyEvent(const SDL_KeyboardEvent* event)
     case SDLK_ESCAPE:
         if (m_Page == PageDisplays) {
             m_Page = PageMain;
-            m_Selected = ActionSwitchDisplay;
+            m_Selected = rowOf(ActionSwitchDisplay);
             repaintMenu();
         }
         else {
@@ -441,8 +569,10 @@ bool Menu::handleMouseMotion(int x, int y, bool usable)
 
     if (m_Dragging) {
         m_DragMoved = true;
-        m_HandleX = SDL_clamp((float)(x - m_DragOffsetX) / SDL_max(1, m_WindowWidth), 0.0f, 1.0f);
-        m_HandleY = SDL_clamp((float)(y - m_DragOffsetY) / SDL_max(1, m_WindowHeight), 0.0f, 1.0f);
+        int x0, y0, x1, y1;
+        videoIn(m_WindowWidth, m_WindowHeight, &x0, &y0, &x1, &y1);
+        m_HandleX = SDL_clamp((float)(x - m_DragOffsetX - x0) / SDL_max(1, x1 - x0), 0.0f, 1.0f);
+        m_HandleY = SDL_clamp((float)(y - m_DragOffsetY - y0) / SDL_max(1, y1 - y0), 0.0f, 1.0f);
         repaintHandle();
         if (m_MenuOpen) {
             repaintMenu();
@@ -493,10 +623,8 @@ bool Menu::handleMouseButton(int button, bool pressed, int x, int y, bool usable
 
     if (pressed) {
         if (pointInHandle(x, y)) {
-            int hx = SDL_clamp((int)(m_HandleX * m_WindowWidth), 0,
-                               SDL_max(0, m_WindowWidth - HANDLE_SIZE));
-            int hy = SDL_clamp((int)(m_HandleY * m_WindowHeight), 0,
-                               SDL_max(0, m_WindowHeight - HANDLE_SIZE));
+            int hx, hy;
+            anchorIn(m_WindowWidth, m_WindowHeight, HANDLE_SIZE, HANDLE_SIZE, &hx, &hy);
             m_Dragging = true;
             m_DragMoved = false;
             m_DragOffsetX = x - hx;

@@ -204,6 +204,7 @@ SOURCES += \
     gui/sdlgamepadkeynavigation.cpp \
     streaming/video/overlaymanager.cpp \
     streaming/video/duskoverlay.cpp \
+    streaming/duskchannel.cpp \
     backend/systemproperties.cpp \
     wm.cpp
 
@@ -243,6 +244,7 @@ HEADERS += \
     gui/sdlgamepadkeynavigation.h \
     streaming/video/overlaymanager.h \
     streaming/video/duskoverlay.h \
+    streaming/duskchannel.h \
     backend/systemproperties.h
 
 # Platform-specific renderers and decoders

@@ -11,6 +11,8 @@
 #include "audio/renderers/renderer.h"
 #include "video/overlaymanager.h"
 
+class DuskChannel;
+
 class SupportedVideoFormatList : public QList<int>
 {
 public:
@@ -122,6 +124,13 @@ public:
     Overlay::OverlayManager& getOverlayManager()
     {
         return m_OverlayManager;
+    }
+
+    /// The link back to Dusk, or nullptr when Dusk did not launch this
+    /// stream. Only valid on the main thread while the stream is running.
+    DuskChannel* getDuskChannel()
+    {
+        return m_DuskChannel;
     }
 
     void flushWindowEvents();
@@ -263,6 +272,7 @@ private:
     QQuickWindow* m_QtWindow;
     bool m_UnexpectedTermination;
     SdlInputHandler* m_InputHandler;
+    DuskChannel* m_DuskChannel;
     int m_MouseEmulationRefCount;
     int m_FlushingWindowEventsRef;
     QStringList m_LaunchWarnings;

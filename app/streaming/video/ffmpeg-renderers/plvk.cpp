@@ -1000,6 +1000,30 @@ void PlVkRenderer::renderFrame(AVFrame *frame)
 
     pl_frame_from_swapchain(&targetFrame, &m_SwapchainFrame);
 
+    // Work out where the video will land before positioning the overlays,
+    // because Dusk's handle is anchored inside the video rather than in the
+    // window. The crop on targetFrame still describes the whole surface at
+    // this point; it is narrowed to this rect further down.
+    SDL_Rect src;
+    src.x = mappedFrame.crop.x0;
+    src.y = mappedFrame.crop.y0;
+    src.w = mappedFrame.crop.x1 - mappedFrame.crop.x0;
+    src.h = mappedFrame.crop.y1 - mappedFrame.crop.y0;
+
+    SDL_Rect dst;
+    dst.x = targetFrame.crop.x0;
+    dst.y = targetFrame.crop.y0;
+    dst.w = targetFrame.crop.x1 - targetFrame.crop.x0;
+    dst.h = targetFrame.crop.y1 - targetFrame.crop.y0;
+
+    // Scale the video to the surface size while preserving the aspect ratio
+    StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
+
+    Session::get()->getOverlayManager().getMenu().setVideoRect(
+        dst.x, dst.y, dst.w, dst.h,
+        (int)(targetFrame.crop.x1 - targetFrame.crop.x0),
+        (int)(targetFrame.crop.y1 - targetFrame.crop.y0));
+
     // We perform minimal processing under the overlay lock to avoid blocking threads updating the overlay
     SDL_AtomicLock(&m_OverlayLock);
     for (int i = 0; i < Overlay::OverlayMax; i++) {
@@ -1065,21 +1089,6 @@ void PlVkRenderer::renderFrame(AVFrame *frame)
         }
     }
     SDL_AtomicUnlock(&m_OverlayLock);
-
-    SDL_Rect src;
-    src.x = mappedFrame.crop.x0;
-    src.y = mappedFrame.crop.y0;
-    src.w = mappedFrame.crop.x1 - mappedFrame.crop.x0;
-    src.h = mappedFrame.crop.y1 - mappedFrame.crop.y0;
-
-    SDL_Rect dst;
-    dst.x = targetFrame.crop.x0;
-    dst.y = targetFrame.crop.y0;
-    dst.w = targetFrame.crop.x1 - targetFrame.crop.x0;
-    dst.h = targetFrame.crop.y1 - targetFrame.crop.y0;
-
-    // Scale the video to the surface size while preserving the aspect ratio
-    StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
 
     targetFrame.crop.x0 = dst.x;
     targetFrame.crop.y0 = dst.y;

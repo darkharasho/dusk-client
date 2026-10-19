@@ -146,6 +146,18 @@ public:
 
     void setCaptureActive(bool active);
 
+    /// Put the real cursor somewhere in the window.
+    ///
+    /// Dusk's overlay uses this when it takes the mouse back from a stream
+    /// that was holding it in relative mode: there is no pointer position
+    /// to inherit there, so the cursor would otherwise reappear wherever it
+    /// was parked before the stream began.
+    void warpCursorTo(int x, int y);
+
+    /// True when the pointer position means anything. False while a stream
+    /// holds the mouse in relative mode, where there is no position to read.
+    bool overlayPointerUsable();
+
     bool isMouseInVideoRegion(int mouseX, int mouseY, int windowWidth = -1, int windowHeight = -1);
 
     void updateKeyboardGrabState();
@@ -190,7 +202,6 @@ private:
     void performSpecialKeyCombo(KeyCombo combo);
 
     // Dusk's overlay gets first refusal on pointer input.
-    bool overlayPointerUsable();
     bool overlayTookMouseMotion(SDL_MouseMotionEvent* event);
     bool overlayTookMouseButton(SDL_MouseButtonEvent* event);
 

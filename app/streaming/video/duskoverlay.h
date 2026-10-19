@@ -69,6 +69,16 @@ public:
 
     void setWindowSize(int width, int height);
 
+    /// Stream the host's display `index`, counting from zero. The display
+    /// picker uses this, and so does Dusk when it asks over the channel.
+    void switchHostDisplay(int index);
+
+    /// Where the video sits inside the output surface, as 0..1 fractions of
+    /// it. Renderers report it each frame; it is stored normalised so the
+    /// same rect serves both the renderer's display space and window
+    /// coordinates, which differ on a HiDPI display.
+    void setVideoRect(int x, int y, int w, int h, int surfaceWidth, int surfaceHeight);
+
     /// Where the handle and menu sit, in a renderer's display space. They
     /// move, unlike the fixed corners the other overlays use, so renderers
     /// ask rather than hardcode.
@@ -84,6 +94,7 @@ private:
         ActionFullScreen,
         ActionReleaseMouse,
         ActionMinimize,
+        ActionOpenDusk,
         ActionDisconnect,
         ActionMax
     };
@@ -105,6 +116,12 @@ private:
     const char* labelFor(int index) const;
     int rowCount() const;
 
+    /// Rows on the main page are actions, minus any that do not apply:
+    /// Open Dusk only means something when Dusk launched the stream.
+    bool actionShown(int action) const;
+    int actionAt(int row) const;
+    int rowOf(int action) const;
+
     /// Press a hotkey on the host.
     ///
     /// Sent rather than typed: Ctrl+Alt+Shift is also Moonlight's own
@@ -121,6 +138,14 @@ private:
     int menuWidth() const;
     int menuHeight() const;
     bool pointInHandle(int x, int y) const;
+
+    /// The handle's top-left corner within the video, in a space `spaceW` x
+    /// `spaceH` wide. One function for drawing and hit-testing alike, so the
+    /// two cannot drift apart.
+    void anchorIn(int spaceW, int spaceH, int itemW, int itemH, int* x, int* y) const;
+
+    /// The video rect in a space of the given size.
+    void videoIn(int spaceW, int spaceH, int* x0, int* y0, int* x1, int* y1) const;
     int itemAtPoint(int x, int y) const;
 
     void drawRect(SDL_Surface* surface, int x, int y, int w, int h, SDL_Color color);
@@ -142,6 +167,13 @@ private:
     // change.
     float m_HandleX;
     float m_HandleY;
+
+    // The video rect, as 0..1 fractions of the output surface. Defaults to
+    // the whole of it, which is what a matching aspect ratio gives anyway.
+    float m_VideoX0;
+    float m_VideoY0;
+    float m_VideoX1;
+    float m_VideoY1;
 
     bool m_Dragging;
     bool m_DragMoved;
