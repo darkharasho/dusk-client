@@ -5,6 +5,10 @@ permissions:
 
 on:
   push:
+    # Both filters, not just the tag one. A push filter naming only tags
+    # stops the workflow running for branches entirely, which silently
+    # turned this repository's CI off for every ordinary push.
+    branches: ['**']
     # dusk-release.yml calls these same reusable workflows on its own tags,
     # and running both would build the whole matrix twice for one push.
     tags-ignore: ['dusk-v*']
