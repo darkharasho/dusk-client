@@ -538,8 +538,10 @@ unix:!macx: {
     desktop.files = deploy/linux/com.moonlight_stream.Moonlight.desktop
     desktop.path = $$PREFIX/$$DATADIR/applications/
 
-    icons.files = res/moonlight.svg
-    icons.path = $$PREFIX/$$DATADIR/icons/hicolor/scalable/apps/
+    # A raster icon, so it installs under its own size rather than
+    # `scalable`, which is for SVG and where a PNG is simply not found.
+    icons.files = res/dusk.png
+    icons.path = $$PREFIX/$$DATADIR/icons/hicolor/512x512/apps/
 
     appstream.files = deploy/linux/com.moonlight_stream.Moonlight.appdata.xml
     appstream.path = $$PREFIX/$$DATADIR/metainfo/
@@ -547,10 +549,12 @@ unix:!macx: {
     INSTALLS += target desktop icons appstream
 }
 win32 {
-    RC_ICONS = moonlight.ico
-    QMAKE_TARGET_COMPANY = Moonlight Game Streaming Project
-    QMAKE_TARGET_DESCRIPTION = Moonlight Game Streaming Client
-    QMAKE_TARGET_PRODUCT = Moonlight
+    # Naming and icon only. The target name stays `Moonlight.exe` because
+    # Dusk finds this client by path, and nothing user-visible reads it.
+    RC_ICONS = dusk.ico
+    QMAKE_TARGET_COMPANY = Dusk
+    QMAKE_TARGET_DESCRIPTION = Dusk game streaming client
+    QMAKE_TARGET_PRODUCT = Dusk Stream
 
     CONFIG -= embed_manifest_exe
     QMAKE_LFLAGS += /MANIFEST:embed /MANIFESTINPUT:$${PWD}/Moonlight.exe.manifest
@@ -562,7 +566,7 @@ macx {
 
     QMAKE_INFO_PLIST = $$OUT_PWD/Info.plist
 
-    APP_BUNDLE_RESOURCES.files = moonlight.icns
+    APP_BUNDLE_RESOURCES.files = dusk.icns
     APP_BUNDLE_RESOURCES.path = Contents/Resources
 
     APP_BUNDLE_PLIST.files = $$OUT_PWD/Info.plist

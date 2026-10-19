@@ -428,6 +428,22 @@ int main(int argc, char *argv[])
     // Set these here to allow us to use the default QSettings constructor.
     // These also ensure that our cache directory is named correctly. As such,
     // it is critical that these be called before Path::initialize().
+    // DO NOT RENAME THESE THREE. They are not cosmetic: Qt derives the
+    // QSettings store from them, and that store holds the client certificate
+    // and key that every host pairing is bound to.
+    //
+    //   macOS    ~/Library/Preferences/com.moonlight-stream.Moonlight.plist
+    //   Linux    ~/.config/Moonlight Game Streaming Project/Moonlight.conf
+    //   Windows  HKCU\Software\Moonlight Game Streaming Project\Moonlight
+    //
+    // Change any of them and this build starts from an empty store, which
+    // unpairs every machine. Dusk also reads the identity from those exact
+    // paths, so it would stop seeing one at all and report every host's
+    // pairing state as unknown.
+    //
+    // The user-visible name is carried by CFBundleDisplayName, the Windows
+    // version resource and the .desktop entry instead, none of which Qt
+    // reads back.
     QCoreApplication::setOrganizationName("Moonlight Game Streaming Project");
     QCoreApplication::setOrganizationDomain("moonlight-stream.com");
     QCoreApplication::setApplicationName("Moonlight");
@@ -760,6 +776,13 @@ int main(int argc, char *argv[])
     }
 
     QGuiApplication app(argc, argv);
+
+    // Separate from the application name set far above, which is load-bearing
+    // for QSettings and must keep saying Moonlight. This one is only what Qt
+    // puts in window titles, so it is where the user-visible name lives.
+    // Set after construction rather than beside the other names: it is the
+    // unambiguously correct point, and nothing reads it earlier.
+    QGuiApplication::setApplicationDisplayName("Dusk Stream");
 
 #ifdef Q_OS_DARWIN
     // macOS defaults "Keyboard navigation" to text fields and lists only, which

@@ -1,8 +1,12 @@
 [Desktop Entry]
-Name=Moonlight
+Name=Dusk Stream
 Comment=Stream games and other applications from another PC running Sunshine or GeForce Experience
 Exec=moonlight
-Icon=moonlight
+Icon=dusk
+# StartupWMClass has to keep matching the binary, which is still `moonlight`:
+# it is how the desktop associates the window with this entry, and getting it
+# wrong puts a second, nameless icon in the dock beside the real one.
+StartupWMClass=moonlight
 Terminal=false
 Type=Application
 Categories=Qt;Game;Network;RemoteAccess;

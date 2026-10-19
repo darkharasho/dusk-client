@@ -10,8 +10,23 @@
 	<true/>
 	<key>CFBundleGetInfoString</key>
 	<string>Stream games and other applications from another PC</string>
+	<!-- What the dock, the menu bar and the About box call this. The
+	     executable keeps its name because Dusk looks for it by path, and
+	     the bundle identifier keeps its because it is load-bearing: see
+	     the note below. -->
+	<key>CFBundleName</key>
+	<string>Dusk Stream</string>
+	<key>CFBundleDisplayName</key>
+	<string>Dusk Stream</string>
 	<key>CFBundleIconFile</key>
-	<string>moonlight</string>
+	<string>dusk</string>
+	<!-- DO NOT CHANGE. Qt derives the QSettings store from the
+	     organization domain and application name set in main.cpp, and this
+	     identifier is the same string. Moving either moves the store, and
+	     the store holds the client certificate and key that every host
+	     pairing is bound to — so changing it silently unpairs every
+	     machine and hides the identity from Dusk, which reads it from
+	     that exact path. -->
 	<key>CFBundleIdentifier</key>
 	<string>com.moonlight-stream.Moonlight</string>
 	<key>NSHighResolutionCapable</key>
