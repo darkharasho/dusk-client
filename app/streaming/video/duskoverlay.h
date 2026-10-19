@@ -69,6 +69,10 @@ public:
 
     void setWindowSize(int width, int height);
 
+    /// Stream the host's display `index`, counting from zero. The display
+    /// picker uses this, and so does Dusk when it asks over the channel.
+    void switchHostDisplay(int index);
+
     /// Where the video sits inside the output surface, as 0..1 fractions of
     /// it. Renderers report it each frame; it is stored normalised so the
     /// same rect serves both the renderer's display space and window
@@ -90,6 +94,7 @@ private:
         ActionFullScreen,
         ActionReleaseMouse,
         ActionMinimize,
+        ActionOpenDusk,
         ActionDisconnect,
         ActionMax
     };
@@ -110,6 +115,12 @@ private:
     void activate(int index);
     const char* labelFor(int index) const;
     int rowCount() const;
+
+    /// Rows on the main page are actions, minus any that do not apply:
+    /// Open Dusk only means something when Dusk launched the stream.
+    bool actionShown(int action) const;
+    int actionAt(int row) const;
+    int rowOf(int action) const;
 
     /// Press a hotkey on the host.
     ///

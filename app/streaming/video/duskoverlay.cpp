@@ -1,4 +1,5 @@
 #include "duskoverlay.h"
+#include "streaming/duskchannel.h"
 #include "overlaymanager.h"
 #include "path.h"
 #include "streaming/session.h"
@@ -176,7 +177,40 @@ int Menu::menuWidth() const
 int Menu::rowCount() const
 {
     // The display page carries a Back row on the end.
-    return m_Page == PageMain ? ActionMax : k_DisplayCount + 1;
+    return m_Page == PageMain ? rowOf(ActionMax) : k_DisplayCount + 1;
+}
+
+bool Menu::actionShown(int action) const
+{
+    if (action == ActionOpenDusk) {
+        Session* session = Session::get();
+        return session != nullptr && session->getDuskChannel() != nullptr;
+    }
+    return true;
+}
+
+int Menu::actionAt(int row) const
+{
+    for (int action = 0; action < ActionMax; action++) {
+        if (!actionShown(action)) {
+            continue;
+        }
+        if (row-- == 0) {
+            return action;
+        }
+    }
+    return ActionMax;
+}
+
+int Menu::rowOf(int action) const
+{
+    int row = 0;
+    for (int i = 0; i < action; i++) {
+        if (actionShown(i)) {
+            row++;
+        }
+    }
+    return row;
 }
 
 int Menu::menuHeight() const
@@ -299,6 +333,12 @@ void Menu::sendHostHotkey(short keyCode)
     LiSendKeyboardEvent(0xA2, KEY_ACTION_UP, 0);
 }
 
+void Menu::switchHostDisplay(int index)
+{
+    // Sunshine listens for Ctrl+Alt+Shift+F1..F12 on the host.
+    sendHostHotkey(0x70 /* VK_F1 */ + index);
+}
+
 void Menu::setMenuOpen(bool open)
 {
     if (m_MenuOpen == open) {
@@ -349,7 +389,7 @@ const char* Menu::labelFor(int index) const
         return label;
     }
 
-    switch (index) {
+    switch (actionAt(index)) {
     case ActionStats:
         return (session != nullptr &&
                 session->getOverlayManager().isOverlayEnabled(OverlayDebug))
@@ -359,6 +399,7 @@ const char* Menu::labelFor(int index) const
     case ActionFullScreen:   return "Toggle full screen";
     case ActionReleaseMouse: return "Release the mouse";
     case ActionMinimize:     return "Minimise";
+    case ActionOpenDusk:     return "Open Dusk";
     case ActionDisconnect:   return "Disconnect";
     default:                 return "";
     }
@@ -371,18 +412,17 @@ void Menu::activate(int index)
     if (m_Page == PageDisplays) {
         if (index >= k_DisplayCount) {
             m_Page = PageMain;
-            m_Selected = ActionSwitchDisplay;
+            m_Selected = rowOf(ActionSwitchDisplay);
             repaintMenu();
             return;
         }
 
-        // Sunshine listens for Ctrl+Alt+Shift+F1..F12 on the host.
-        sendHostHotkey(0x70 /* VK_F1 */ + index);
+        switchHostDisplay(index);
         setMenuOpen(false);
         return;
     }
 
-    switch (index) {
+    switch (actionAt(index)) {
     case ActionStats:
         if (session != nullptr) {
             OverlayManager& overlays = session->getOverlayManager();
@@ -423,8 +463,35 @@ void Menu::activate(int index)
         }
         break;
 
+    case ActionOpenDusk:
+        // Dusk raises its window; getting the stream out of the way is
+        // ours to do. Leave the mouse free so it can reach Dusk, and step
+        // out of full screen's way, which would otherwise cover the window
+        // Dusk just raised.
+        setMenuOpen(false);
+        m_RestoreCapture = false;
+        if (Session::s_ActiveSession != nullptr) {
+            if (Session::s_ActiveSession->m_InputHandler != nullptr) {
+                Session::s_ActiveSession->m_InputHandler->setCaptureActive(false);
+            }
+            if (Session::s_ActiveSession->m_Window != nullptr &&
+                (SDL_GetWindowFlags(Session::s_ActiveSession->m_Window) & SDL_WINDOW_FULLSCREEN)) {
+                SDL_MinimizeWindow(Session::s_ActiveSession->m_Window);
+            }
+        }
+        if (session != nullptr && session->getDuskChannel() != nullptr) {
+            session->getDuskChannel()->sendOverlayAction("settings");
+        }
+        break;
+
     case ActionDisconnect:
         setMenuOpen(false);
+        // Tell Dusk why the stream is about to end, then end it anyway.
+        // Dusk answers with a disconnect of its own, but the button must
+        // not depend on a round trip to a process that may be wedged.
+        if (session != nullptr && session->getDuskChannel() != nullptr) {
+            session->getDuskChannel()->sendOverlayAction("disconnect");
+        }
         {
             // Same path as the quit key combo, so there is one teardown.
             SDL_Event event;
@@ -476,7 +543,7 @@ bool Menu::handleKeyEvent(const SDL_KeyboardEvent* event)
     case SDLK_ESCAPE:
         if (m_Page == PageDisplays) {
             m_Page = PageMain;
-            m_Selected = ActionSwitchDisplay;
+            m_Selected = rowOf(ActionSwitchDisplay);
             repaintMenu();
         }
         else {
