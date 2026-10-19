@@ -247,6 +247,29 @@ void DuskChannel::sendOverlayAction(const char* action)
     post(encode(message));
 }
 
+void DuskChannel::sendStats(double fps, double bitrateKbps, double rttMs,
+                            double decodeMs, double packetLossPercent)
+{
+    QJsonObject message;
+    message["type"] = "stats";
+    if (fps >= 0) {
+        message["fps"] = fps;
+    }
+    if (bitrateKbps >= 0) {
+        message["bitrateKbps"] = qRound(bitrateKbps);
+    }
+    if (rttMs >= 0) {
+        message["rttMs"] = rttMs;
+    }
+    if (decodeMs >= 0) {
+        message["decodeMs"] = decodeMs;
+    }
+    if (packetLossPercent >= 0) {
+        message["packetLoss"] = packetLossPercent;
+    }
+    post(encode(message));
+}
+
 bool DuskChannel::isConnected() const
 {
     return m_Connected.loadAcquire() != 0;

@@ -52,6 +52,12 @@ public:
     /// Intents rather than commands -- Dusk decides what they mean.
     void sendOverlayAction(const char* action);
 
+    /// How the stream is doing over the last measurement window. A negative
+    /// value means "not measured" and is left out, so Dusk shows what it has
+    /// rather than a misleading zero. Safe from any thread.
+    void sendStats(double fps, double bitrateKbps, double rttMs,
+                   double decodeMs, double packetLossPercent);
+
     /// Whether Dusk has the other end. Messages sent before the connection
     /// is up are held and delivered after the handshake, so this is for
     /// deciding what to offer, not for deciding whether to send.

@@ -13,6 +13,8 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 }
 
+class DuskChannel;
+
 class FFmpegVideoDecoder : public IVideoDecoder {
 public:
     FFmpegVideoDecoder(bool testOnly);
@@ -51,6 +53,9 @@ private:
                                 bool useAlternateFrontend);
 
     void stringifyVideoStats(VIDEO_STATS& stats, char* output, int length);
+
+    // Fork addition: the closing stats window, for Dusk.
+    void sendDuskStats(DuskChannel* dusk);
 
     void logVideoStats(VIDEO_STATS& stats, const char* title);
 

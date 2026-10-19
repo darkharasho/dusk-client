@@ -2,6 +2,7 @@
 #include "ffmpeg.h"
 #include "utils.h"
 #include "streaming/session.h"
+#include "streaming/duskchannel.h"
 
 #include <h264_stream.h>
 
@@ -800,6 +801,25 @@ void FFmpegVideoDecoder::addVideoStats(VIDEO_STATS& src, VIDEO_STATS& dst)
     dst.receivedFps     = (double)dst.receivedFrames / timeDiffSecs;
     dst.decodedFps      = (double)dst.decodedFrames / timeDiffSecs;
     dst.renderedFps     = (double)dst.renderedFrames / timeDiffSecs;
+}
+
+void FFmpegVideoDecoder::sendDuskStats(DuskChannel* dusk)
+{
+    // The window that just closed, measured the same way as the debug
+    // overlay so the two never disagree.
+    VIDEO_STATS window = {};
+    addVideoStats(m_ActiveWndVideoStats, window);
+
+    double fps = window.renderedFrames != 0 ? window.renderedFps : -1;
+    double rttMs = window.lastRtt != 0 ? (double)window.lastRtt : -1;
+    double decodeMs = window.decodedFrames != 0
+            ? (double)window.totalDecodeTimeUs / 1000.0 / window.decodedFrames
+            : -1;
+    double lossPercent = window.totalFrames != 0
+            ? (double)window.networkDroppedFrames / window.totalFrames * 100.0
+            : -1;
+
+    dusk->sendStats(fps, m_BwTracker.GetAverageMbps() * 1000.0, rttMs, decodeMs, lossPercent);
 }
 
 void FFmpegVideoDecoder::stringifyVideoStats(VIDEO_STATS& stats, char* output, int length)
@@ -2130,6 +2150,14 @@ int FFmpegVideoDecoder::submitDecodeUnit(PDECODE_UNIT du)
                                 Session::get()->getOverlayManager().getOverlayText(Overlay::OverlayDebug),
                                 Session::get()->getOverlayManager().getOverlayMaxTextLength());
             Session::get()->getOverlayManager().setOverlayTextUpdated(Overlay::OverlayDebug);
+        }
+
+        // Tell Dusk how the stream is doing, if Dusk launched it. Only
+        // while the link is up: a second's numbers are stale by the time a
+        // reconnect would deliver them.
+        DuskChannel* dusk = Session::get()->getDuskChannel();
+        if (dusk != nullptr && dusk->isConnected()) {
+            sendDuskStats(dusk);
         }
 
         // Accumulate these values into the global stats
