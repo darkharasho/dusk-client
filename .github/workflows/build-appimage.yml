@@ -161,6 +161,10 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: Moonlight-LinuxAppImage-${{ env.CI_VERSION }}
-          path: build/installer-release/Moonlight-${{ env.CI_VERSION }}-x86_64.AppImage
+          # Globbed, not named. linuxdeploy builds the filename from the
+          # desktop entry's Name=, so renaming this build to Dusk Stream
+          # renamed the artifact too and this path stopped matching —
+          # after a clean build, which made it read as a build failure.
+          path: build/installer-release/*-x86_64.AppImage
           compression-level: 0
           if-no-files-found: error
