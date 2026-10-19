@@ -1,0 +1,201 @@
+---
+# Publish this fork's client in the shape Dusk bundles it.
+#
+# Dusk ships its own Moonlight because the in-stream overlay lives here and
+# not upstream. It does not build this repository — a second Qt toolchain in
+# Dusk would be a thing to maintain for no benefit — so this publishes
+# artifacts that Dusk's release workflow downloads and stages.
+#
+# The builds themselves are the existing reusable workflows, called rather
+# than copied: upstream already knows how to build Qt, SDL, FFmpeg and
+# libplacebo on three platforms, and a parallel copy of that here would rot.
+# What this adds is reshaping their output into three predictably named
+# assets and attaching them to a release.
+#
+# Nothing here is signed. Dusk signs the macOS bundle with its own Developer
+# ID while staging it, because the signature has to be applied before Dusk's
+# bundler copies the client into the app.
+name: Dusk client release
+
+# A tag namespace of its own, so this never collides with an upstream
+# version tag pulled in by a merge.
+on:
+  push:
+    tags: ['dusk-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dusk-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # The reusable workflows name their artifacts with this, so the packaging
+  # jobs have to derive it the same way.
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      ci_version: ${{ steps.set-ci-version.outputs.ci_version }}
+    steps:
+      - name: Set CI version
+        id: set-ci-version
+        shell: bash
+        run: |
+          CI_VERSION=`echo ${GITHUB_SHA} | cut -c1-6`
+          echo "ci_version=${CI_VERSION}" >> "${GITHUB_OUTPUT}"
+
+  build-appimage:
+    needs: setup
+    uses: ./.github/workflows/build-appimage.yml
+    with:
+      ci_version: ${{ needs.setup.outputs.ci_version }}
+
+  build-windows-macos:
+    needs: setup
+    uses: ./.github/workflows/build-win-mac.yml
+    with:
+      ci_version: ${{ needs.setup.outputs.ci_version }}
+
+  # macOS has to be reshaped on macOS: the build publishes a .dmg and Dusk
+  # needs the .app inside it, which means hdiutil.
+  package-macos:
+    name: Package (macOS)
+    needs: [setup, build-windows-macos]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          name: Moonlight-macOS-${{ needs.setup.outputs.ci_version }}
+          path: dmg
+
+      - name: Extract the app from the disk image
+        run: |
+          set -euo pipefail
+          image="$(find dmg -name '*.dmg' | head -1)"
+          test -n "$image" || { echo "::error::no .dmg in the build artifact"; exit 1; }
+
+          # -nobrowse so it does not appear in the Finder of a runner nobody
+          # is looking at, and the mount point is read from the plist rather
+          # than parsed out of hdiutil's columns, which are not stable.
+          read_mount='import plistlib,sys; print(next(e["mount-point"] for e in plistlib.loads(sys.stdin.buffer.read())["system-entities"] if "mount-point" in e))'
+          mount="$(hdiutil attach "$image" -nobrowse -readonly -plist | python3 -c "$read_mount")"
+
+          test -d "$mount/Moonlight.app" || { echo "::error::no Moonlight.app in $mount"; exit 1; }
+          # -R rather than -a: the deployed bundle has no symlinks in it and
+          # -R preserves the executable bits, which is the part that matters.
+          cp -R "$mount/Moonlight.app" .
+          hdiutil detach "$mount"
+
+          # Refuse to publish a bundle whose executable is missing, rather
+          # than shipping something Dusk will silently fall back from.
+          test -x Moonlight.app/Contents/MacOS/Moonlight \
+            || { echo "::error::the app has no executable"; exit 1; }
+
+          tar czf dusk-client-macos.tar.gz Moonlight.app
+          ls -la dusk-client-macos.tar.gz
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: dusk-client-macos
+          path: dusk-client-macos.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+
+  package-linux-windows:
+    name: Package (Linux and Windows)
+    needs: [setup, build-appimage, build-windows-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          name: Moonlight-LinuxAppImage-${{ needs.setup.outputs.ci_version }}
+          path: linux
+
+      - uses: actions/download-artifact@v6
+        with:
+          name: Moonlight-Windows-x64-${{ needs.setup.outputs.ci_version }}
+          path: windows
+
+      # Shipped as the AppImage itself rather than extracted. Extracting
+      # avoids needing FUSE at run time but triples the size, and Dusk's own
+      # Linux build is an AppImage too — so where Dusk runs at all, the
+      # machinery to mount one is already working. The .deb is the case that
+      # needs a libfuse2 dependency declared.
+      - name: Reshape the Linux client
+        run: |
+          set -euo pipefail
+          image="$(find linux -name '*.AppImage' | head -1)"
+          test -n "$image" || { echo "::error::no .AppImage in the build artifact"; exit 1; }
+
+          # Named for where Dusk looks, so staging is a copy and not a rename
+          # that has to agree with a constant in another repository.
+          install -m 755 "$image" moonlight
+          tar czf dusk-client-linux-x86_64.tar.gz moonlight
+          ls -la dusk-client-linux-x86_64.tar.gz
+
+      - name: Reshape the Windows client
+        run: |
+          set -euo pipefail
+          # The deploy directory is the client plus every Qt and FFmpeg DLL
+          # it loads, so it ships whole and flat: Dusk looks for
+          # client\Moonlight.exe with its dependencies beside it.
+          test -f windows/Moonlight.exe || {
+            echo "::error::Moonlight.exe is not at the root of the deploy directory"
+            find windows -maxdepth 2 | head -20
+            exit 1
+          }
+          (cd windows && zip -qr ../dusk-client-windows-x64.zip .)
+          ls -la dusk-client-windows-x64.zip
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: dusk-client-linux-windows
+          path: dusk-client-*
+          compression-level: 0
+          if-no-files-found: error
+
+  publish:
+    name: Publish
+    needs: [package-macos, package-linux-windows]
+    if: startsWith(github.ref, 'refs/tags/dusk-v')
+    runs-on: ubuntu-latest
+    steps:
+      # No `name`, so both packaging jobs' artifacts land here.
+      - uses: actions/download-artifact@v6
+        with:
+          path: artifacts
+
+      - name: Attach to a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF#refs/tags/}"
+
+          mapfile -t files < <(find artifacts -type f -name 'dusk-client-*' | sort)
+          printf '%s\n' "${files[@]}"
+
+          # All three or none. Dusk stages whichever assets exist, so a
+          # release missing a platform would quietly produce a build for it
+          # with no overlay — the exact failure this repository's client
+          # exists to prevent.
+          for want in macos linux-x86_64 windows-x64; do
+            printf '%s\n' "${files[@]}" | grep -q "dusk-client-$want" \
+              || { echo "::error::no asset for $want"; exit 1; }
+          done
+
+          notes="Moonlight client for Dusk, built from \`${GITHUB_SHA}\`.
+
+          Carries the in-stream overlay. Unsigned — Dusk signs the macOS
+          bundle with its own Developer ID when it stages it.
+
+          Source for these binaries is this repository at the tagged commit;
+          they are GPL-3.0, like the upstream project they fork."
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${files[@]}" --clobber
+          else
+            gh release create "$tag" "${files[@]}" --title "$tag" --notes "$notes"
+          fi

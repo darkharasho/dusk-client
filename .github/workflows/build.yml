@@ -5,6 +5,9 @@ permissions:
 
 on:
   push:
+    # dusk-release.yml calls these same reusable workflows on its own tags,
+    # and running both would build the whole matrix twice for one push.
+    tags-ignore: ['dusk-v*']
   pull_request:
     branches:
       - master
