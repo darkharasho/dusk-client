@@ -25,6 +25,7 @@ public:
 private:
 
     void renderOverlay(Overlay::OverlayType type, int viewportWidth, int viewportHeight);
+    void updateOverlayVertices(Overlay::OverlayType type, int viewportWidth, int viewportHeight);
     unsigned compileShader(const char* vertexShaderSrc, const char* fragmentShaderSrc);
     bool compileShaders();
     bool setupVideoRenderingState();
@@ -38,6 +39,8 @@ private:
     unsigned m_OverlayVBOs[Overlay::OverlayMax];
     unsigned m_OverlayVAOs[Overlay::OverlayMax];
     SDL_atomic_t m_OverlayHasValidData[Overlay::OverlayMax];
+    int m_OverlayWidths[Overlay::OverlayMax];
+    int m_OverlayHeights[Overlay::OverlayMax];
     unsigned m_ShaderProgram;
     unsigned m_OverlayShaderProgram;
     SDL_GLContext m_Context;

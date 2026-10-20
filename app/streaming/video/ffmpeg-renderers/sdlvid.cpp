@@ -2,6 +2,7 @@
 
 #include "streaming/session.h"
 #include "streaming/streamutils.h"
+#include "streaming/video/duskoverlay.h"
 
 #include <Limelight.h>
 
@@ -256,6 +257,22 @@ void SdlRenderer::renderOverlay(Overlay::OverlayType type)
             if (m_OverlayTextures[type]) {
                 // Overlays are always drawn at exact size
                 SDL_SetTextureScaleMode(m_OverlayTextures[type], SDL_ScaleModeNearest);
+            }
+        }
+
+        // Dusk's handle and menu move without their pixels changing, so
+        // they are placed every frame rather than only on upload.
+        if (type == Overlay::OverlayHandle || type == Overlay::OverlayMenu) {
+            int outputWidth, outputHeight;
+            SDL_GetRendererOutputSize(m_Renderer, &outputWidth, &outputHeight);
+            Overlay::Menu& menu = Session::get()->getOverlayManager().getMenu();
+            if (type == Overlay::OverlayHandle) {
+                menu.handleOrigin(outputWidth, outputHeight, m_OverlayRects[type].w, m_OverlayRects[type].h,
+                                  &m_OverlayRects[type].x, &m_OverlayRects[type].y);
+            }
+            else {
+                menu.menuOrigin(outputWidth, outputHeight, m_OverlayRects[type].w, m_OverlayRects[type].h,
+                                &m_OverlayRects[type].x, &m_OverlayRects[type].y);
             }
         }
 
@@ -574,6 +591,16 @@ ReadbackRetry:
     dst.x = dst.y = 0;
     SDL_GetRendererOutputSize(m_Renderer, &dst.w, &dst.h);
     StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
+
+    // Dusk's handle is kept inside the video rather than the window, so a
+    // stream with bars down the side does not put it where the pointer
+    // cannot go.
+    {
+        int outputWidth, outputHeight;
+        SDL_GetRendererOutputSize(m_Renderer, &outputWidth, &outputHeight);
+        Session::get()->getOverlayManager().getMenu().setVideoRect(
+            dst.x, dst.y, dst.w, dst.h, outputWidth, outputHeight);
+    }
 
     // Ensure the viewport is set to the desired video region
     SDL_RenderSetViewport(m_Renderer, &dst);
