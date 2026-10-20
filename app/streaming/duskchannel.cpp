@@ -60,7 +60,15 @@ public:
             SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Dusk: control channel closed");
         });
 
+        // Qt before 5.15 (the Steam Link's, for one) calls this signal
+        // error, and overloads the name, so it has to be picked by type.
+#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
         QObject::connect(m_Socket, &QLocalSocket::errorOccurred, this,
+#else
+        QObject::connect(m_Socket,
+                         QOverload<QLocalSocket::LocalSocketError>::of(&QLocalSocket::error),
+                         this,
+#endif
                          [this](QLocalSocket::LocalSocketError) {
             // Not fatal to the stream. A Dusk that is not listening any more
             // costs the overlay its link back, and nothing else.
