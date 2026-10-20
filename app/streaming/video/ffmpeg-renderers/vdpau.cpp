@@ -1,6 +1,7 @@
 #include <streaming/session.h>
 #include "vdpau.h"
 #include <streaming/streamutils.h>
+#include <streaming/video/duskoverlay.h>
 #include <utils.h>
 
 #include <SDL_syswm.h>
@@ -435,7 +436,9 @@ void VDPAURenderer::notifyOverlayUpdated(Overlay::OverlayType type)
             return;
         }
 
-        VdpRect overlayRect;
+        // Dusk's handle and menu are placed when they are drawn, because
+        // they move without their pixels changing; only their size is kept.
+        VdpRect overlayRect = {};
 
         if (type == Overlay::OverlayStatusUpdate) {
             // Bottom Left
@@ -502,8 +505,28 @@ void VDPAURenderer::renderOverlay(VdpOutputSurface destination, Overlay::Overlay
         return;
     }
 
+    VdpRect rect = m_OverlayRect[type];
+    if (type == Overlay::OverlayHandle || type == Overlay::OverlayMenu) {
+        // Dusk's overlays move, so the position comes from the menu, which
+        // keeps them inside the video rather than out in a bar.
+        int w = rect.x1 - rect.x0;
+        int h = rect.y1 - rect.y0;
+        int x = 0, y = 0;
+        Overlay::Menu& menu = Session::get()->getOverlayManager().getMenu();
+        if (type == Overlay::OverlayHandle) {
+            menu.handleOrigin(m_DisplayWidth, m_DisplayHeight, w, h, &x, &y);
+        }
+        else {
+            menu.menuOrigin(m_DisplayWidth, m_DisplayHeight, w, h, &x, &y);
+        }
+        rect.x0 = x;
+        rect.y0 = y;
+        rect.x1 = x + w;
+        rect.y1 = y + h;
+    }
+
     status = m_VdpOutputSurfaceRenderBitmapSurface(destination,
-                                                   &m_OverlayRect[type],
+                                                   &rect,
                                                    m_OverlaySurface[type],
                                                    nullptr,
                                                    nullptr,
@@ -601,6 +624,12 @@ void VDPAURenderer::renderFrame(AVFrame* frame)
     dst.h = m_DisplayHeight;
 
     StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
+
+    // Dusk's handle is kept inside the video rather than the window, so a
+    // stream with bars down the side does not put it where the pointer
+    // cannot go.
+    Session::get()->getOverlayManager().getMenu().setVideoRect(
+        dst.x, dst.y, dst.w, dst.h, m_DisplayWidth, m_DisplayHeight);
 
     outputRect.x0 = dst.x;
     outputRect.x1 = dst.x + dst.w;
