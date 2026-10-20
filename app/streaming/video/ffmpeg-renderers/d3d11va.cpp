@@ -8,6 +8,7 @@
 
 #include "streaming/streamutils.h"
 #include "streaming/session.h"
+#include "streaming/video/duskoverlay.h"
 
 #include <SDL_syswm.h>
 
@@ -866,6 +867,29 @@ void D3D11VARenderer::renderOverlay(Overlay::OverlayType type)
         return;
     }
 
+    // Dusk's handle and menu move without their pixels changing -- dragged,
+    // or kept inside a video rect that moved -- and the vertex buffers are
+    // immutable, so a new one is made whenever the place they belong moves.
+    if (type == Overlay::OverlayHandle || type == Overlay::OverlayMenu) {
+        D3D11_TEXTURE2D_DESC desc;
+        overlayTexture->GetDesc(&desc);
+        int x, y;
+        overlayOrigin(type, desc.Width, desc.Height, &x, &y);
+        if (x != m_OverlayOrigins[type].x || y != m_OverlayOrigins[type].y) {
+            ComPtr<ID3D11Buffer> movedVertexBuffer;
+            if (createOverlayVertexBuffer(type, desc.Width, desc.Height, movedVertexBuffer)) {
+                SDL_AtomicLock(&m_OverlayLock);
+                // Only if the texture it was made for is still the current
+                // one; an update that raced us brought its own buffer.
+                if (m_OverlayTextures[type] == overlayTexture) {
+                    m_OverlayVertexBuffers[type] = movedVertexBuffer;
+                }
+                SDL_AtomicUnlock(&m_OverlayLock);
+                overlayVertexBuffer = movedVertexBuffer;
+            }
+        }
+    }
+
     // If there was a texture, there must also be a vertex buffer and SRV
     SDL_assert(overlayVertexBuffer);
     SDL_assert(overlayTextureResourceView);
@@ -897,6 +921,12 @@ void D3D11VARenderer::bindVideoVertexBuffer(bool frameChanged, AVFrame* frame)
         dst.w = m_DisplayWidth;
         dst.h = m_DisplayHeight;
         StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
+
+        // Dusk's handle is kept inside the video rather than the window, so
+        // a stream with bars down the side does not put it where the
+        // pointer cannot go.
+        Session::get()->getOverlayManager().getMenu().setVideoRect(
+            dst.x, dst.y, dst.w, dst.h, m_DisplayWidth, m_DisplayHeight);
 
         // Convert screen space to normalized device coordinates
         SDL_FRect renderRect;
@@ -1178,6 +1208,17 @@ void D3D11VARenderer::notifyOverlayUpdated(Overlay::OverlayType type)
     SDL_AtomicUnlock(&m_OverlayLock);
 }
 
+void D3D11VARenderer::overlayOrigin(Overlay::OverlayType type, int width, int height, int* x, int* y)
+{
+    Overlay::Menu& menu = Session::get()->getOverlayManager().getMenu();
+    if (type == Overlay::OverlayHandle) {
+        menu.handleOrigin(m_DisplayWidth, m_DisplayHeight, width, height, x, y);
+    }
+    else {
+        menu.menuOrigin(m_DisplayWidth, m_DisplayHeight, width, height, x, y);
+    }
+}
+
 bool D3D11VARenderer::createOverlayVertexBuffer(Overlay::OverlayType type, int width, int height, ComPtr<ID3D11Buffer>& newVertexBuffer)
 {
     SDL_FRect renderRect = {};
@@ -1192,11 +1233,16 @@ bool D3D11VARenderer::createOverlayVertexBuffer(Overlay::OverlayType type, int w
         renderRect.x = 0;
         renderRect.y = m_DisplayHeight - height;
     }
-    else if (type == Overlay::OverlayMenu) {
-        // Centred: it is a menu someone is looking at, not a status line
-        // they are ignoring.
-        renderRect.x = (m_DisplayWidth - width) / 2.0f;
-        renderRect.y = (m_DisplayHeight - height) / 2.0f;
+    else if (type == Overlay::OverlayHandle || type == Overlay::OverlayMenu) {
+        // Dusk's overlays move, so the position comes from the menu. It
+        // counts from the top; normalized device coordinates count from the
+        // bottom.
+        int x, y;
+        overlayOrigin(type, width, height, &x, &y);
+        m_OverlayOrigins[type].x = x;
+        m_OverlayOrigins[type].y = y;
+        renderRect.x = x;
+        renderRect.y = m_DisplayHeight - y - height;
     }
 
     renderRect.w = width;

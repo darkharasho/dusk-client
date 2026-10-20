@@ -163,6 +163,12 @@ public:
         dst.h = drawableHeight;
         StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
 
+        // Dusk's handle is kept inside the video rather than the window, so
+        // a stream with bars down the side does not put it where the
+        // pointer cannot go.
+        Session::get()->getOverlayManager().getMenu().setVideoRect(
+            dst.x, dst.y, dst.w, dst.h, drawableWidth, drawableHeight);
+
         // Convert screen space to normalized device coordinates
         SDL_FRect renderRect;
         StreamUtils::screenSpaceToNormalizedDeviceCoords(&dst, &renderRect, drawableWidth, drawableHeight);
@@ -552,8 +558,10 @@ public:
                     else {
                         menu.menuOrigin(m_LastDrawableWidth, m_LastDrawableHeight, w, h, &x, &y);
                     }
+                    // The menu counts from the top; normalized device
+                    // coordinates count from the bottom.
                     renderRect.x = x;
-                    renderRect.y = y;
+                    renderRect.y = m_LastDrawableHeight - y - h;
                 }
 
                 renderRect.w = overlayTexture.width;

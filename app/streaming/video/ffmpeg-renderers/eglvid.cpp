@@ -5,6 +5,7 @@
 #include "utils.h"
 #include "streaming/session.h"
 #include "streaming/streamutils.h"
+#include "streaming/video/duskoverlay.h"
 
 #include <QDir>
 
@@ -57,6 +58,8 @@ EGLRenderer::EGLRenderer(IFFmpegRenderer *backendRenderer)
         m_OverlayVBOs{0},
         m_OverlayVAOs{0},
         m_OverlayHasValidData{},
+        m_OverlayWidths{},
+        m_OverlayHeights{},
         m_ShaderProgram(0),
         m_OverlayShaderProgram(0),
         m_Context(0),
@@ -152,6 +155,61 @@ AVPixelFormat EGLRenderer::getPreferredPixelFormat(int videoFormat)
     return m_Backend->getPreferredPixelFormat(videoFormat);
 }
 
+void EGLRenderer::updateOverlayVertices(Overlay::OverlayType type, int viewportWidth, int viewportHeight)
+{
+    int w = m_OverlayWidths[type];
+    int h = m_OverlayHeights[type];
+
+    SDL_FRect overlayRect;
+
+    // These overlay positions differ from the other renderers because OpenGL
+    // places the origin in the lower-left corner instead of the upper-left.
+    if (type == Overlay::OverlayStatusUpdate) {
+        // Bottom Left
+        overlayRect.x = 0;
+        overlayRect.y = 0;
+    }
+    else if (type == Overlay::OverlayDebug) {
+        // Top left
+        overlayRect.x = 0;
+        overlayRect.y = viewportHeight - h;
+    }
+    else {
+        // Dusk's overlays move, so the position comes from the menu, which
+        // counts from the top like everything but OpenGL does.
+        int x = 0, y = 0;
+        Overlay::Menu& menu = Session::get()->getOverlayManager().getMenu();
+        if (type == Overlay::OverlayHandle) {
+            menu.handleOrigin(viewportWidth, viewportHeight, w, h, &x, &y);
+        }
+        else {
+            menu.menuOrigin(viewportWidth, viewportHeight, w, h, &x, &y);
+        }
+        overlayRect.x = x;
+        overlayRect.y = viewportHeight - y - h;
+    }
+
+    overlayRect.w = w;
+    overlayRect.h = h;
+
+    // Convert screen space to normalized device coordinates
+    StreamUtils::screenSpaceToNormalizedDeviceCoords(&overlayRect, viewportWidth, viewportHeight);
+
+    VERTEX verts[] =
+    {
+        {overlayRect.x + overlayRect.w, overlayRect.y + overlayRect.h, 1.0f, 0.0f},
+        {overlayRect.x, overlayRect.y + overlayRect.h, 0.0f, 0.0f},
+        {overlayRect.x, overlayRect.y, 0.0f, 1.0f},
+        {overlayRect.x, overlayRect.y, 0.0f, 1.0f},
+        {overlayRect.x + overlayRect.w, overlayRect.y, 1.0f, 1.0f},
+        {overlayRect.x + overlayRect.w, overlayRect.y + overlayRect.h, 1.0f, 0.0f}
+    };
+
+    // Update the VBO for this overlay (already bound to a VAO)
+    glBindBuffer(GL_ARRAY_BUFFER, m_OverlayVBOs[type]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+}
+
 void EGLRenderer::renderOverlay(Overlay::OverlayType type, int viewportWidth, int viewportHeight)
 {
     // Do nothing if this overlay is disabled
@@ -200,44 +258,11 @@ void EGLRenderer::renderOverlay(Overlay::OverlayType type, int viewportWidth, in
             glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, 0);
         }
 
-        SDL_FRect overlayRect;
-
-        // These overlay positions differ from the other renderers because OpenGL
-        // places the origin in the lower-left corner instead of the upper-left.
-        if (type == Overlay::OverlayStatusUpdate) {
-            // Bottom Left
-            overlayRect.x = 0;
-            overlayRect.y = 0;
-        }
-        else if (type == Overlay::OverlayDebug) {
-            // Top left
-            overlayRect.x = 0;
-            overlayRect.y = viewportHeight - newSurface->h;
-        } else {
-            SDL_assert(false);
-        }
-
-        overlayRect.w = newSurface->w;
-        overlayRect.h = newSurface->h;
-
+        m_OverlayWidths[type] = newSurface->w;
+        m_OverlayHeights[type] = newSurface->h;
         SDL_FreeSurface(newSurface);
 
-        // Convert screen space to normalized device coordinates
-        StreamUtils::screenSpaceToNormalizedDeviceCoords(&overlayRect, viewportWidth, viewportHeight);
-
-        VERTEX verts[] =
-        {
-            {overlayRect.x + overlayRect.w, overlayRect.y + overlayRect.h, 1.0f, 0.0f},
-            {overlayRect.x, overlayRect.y + overlayRect.h, 0.0f, 0.0f},
-            {overlayRect.x, overlayRect.y, 0.0f, 1.0f},
-            {overlayRect.x, overlayRect.y, 0.0f, 1.0f},
-            {overlayRect.x + overlayRect.w, overlayRect.y, 1.0f, 1.0f},
-            {overlayRect.x + overlayRect.w, overlayRect.y + overlayRect.h, 1.0f, 0.0f}
-        };
-
-        // Update the VBO for this overlay (already bound to a VAO)
-        glBindBuffer(GL_ARRAY_BUFFER, m_OverlayVBOs[type]);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+        updateOverlayVertices(type, viewportWidth, viewportHeight);
 
         SDL_AtomicSet(&m_OverlayHasValidData[type], 1);
     }
@@ -245,6 +270,13 @@ void EGLRenderer::renderOverlay(Overlay::OverlayType type, int viewportWidth, in
     if (!SDL_AtomicGet(&m_OverlayHasValidData[type])) {
         // If the overlay is not populated yet or is stale, don't render it.
         return;
+    }
+
+    // Dusk's handle and menu move without their pixels changing -- dragged,
+    // or kept inside a video rect that moved when the window resized -- so
+    // their position is worked out every frame, not only on upload.
+    if (newSurface == nullptr && (type == Overlay::OverlayHandle || type == Overlay::OverlayMenu)) {
+        updateOverlayVertices(type, viewportWidth, viewportHeight);
     }
 
     // Adjust the viewport to the whole window before rendering the overlays
@@ -813,6 +845,13 @@ void EGLRenderer::renderFrame(AVFrame* frame)
     dst.h = drawableHeight;
     StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
     glViewport(dst.x, dst.y, dst.w, dst.h);
+
+    // Dusk's handle is kept inside the video rather than the window, so a
+    // stream with bars down the side does not put it where the pointer
+    // cannot go. The bars are symmetric, so OpenGL's bottom-up y is the
+    // same offset as the menu's top-down one.
+    Session::get()->getOverlayManager().getMenu().setVideoRect(
+        dst.x, dst.y, dst.w, dst.h, drawableWidth, drawableHeight);
 
     glUseProgram(m_ShaderProgram);
 

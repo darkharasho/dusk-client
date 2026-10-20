@@ -46,6 +46,7 @@ private:
     bool setupTexturePoolViews(AVHWFramesContext* framesContext); // for m_BindDecoderOutputTextures
     void renderOverlay(Overlay::OverlayType type);
     bool createOverlayVertexBuffer(Overlay::OverlayType type, int width, int height, Microsoft::WRL::ComPtr<ID3D11Buffer>& newVertexBuffer);
+    void overlayOrigin(Overlay::OverlayType type, int width, int height, int* x, int* y);
     void bindColorConversion(bool frameChanged, AVFrame* frame);
     void bindVideoVertexBuffer(bool frameChanged, AVFrame* frame);
     void renderVideo(AVFrame* frame);
@@ -105,6 +106,10 @@ private:
 
     SDL_SpinLock m_OverlayLock;
     std::array<Microsoft::WRL::ComPtr<ID3D11Buffer>, Overlay::OverlayMax> m_OverlayVertexBuffers;
+
+    // Where each of Dusk's overlays was last placed, top-down, so a buffer
+    // is remade only when it has moved.
+    std::array<SDL_Point, Overlay::OverlayMax> m_OverlayOrigins = {};
     std::array<Microsoft::WRL::ComPtr<ID3D11Texture2D>, Overlay::OverlayMax> m_OverlayTextures;
     std::array<Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>, Overlay::OverlayMax> m_OverlayTextureResourceViews;
     Microsoft::WRL::ComPtr<ID3D11PixelShader> m_OverlayPixelShader;
