@@ -14,6 +14,7 @@ public:
         QuitRequested,
         PairRequested,
         ListRequested,
+        AddHostRequested,
     };
 
     GlobalCommandLineParser();
@@ -90,4 +91,27 @@ private:
     QString m_Host;
     bool m_PrintCSV;
     bool m_Verbose;
+};
+
+class AddHostCommandLineParser
+{
+public:
+    AddHostCommandLineParser();
+    virtual ~AddHostCommandLineParser();
+
+    // Exits 1 with a single line on stderr on any bad argument
+    void parse(const QStringList &args);
+
+    QString getAddress() const;
+    QString getUuid() const;
+    QString getName() const;
+    QString getServerCertPath() const;
+    uint16_t getPort() const;
+
+private:
+    QString m_Address;
+    QString m_Uuid;
+    QString m_Name;
+    QString m_ServerCertPath;
+    uint16_t m_Port;
 };

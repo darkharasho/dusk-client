@@ -1,5 +1,7 @@
 #include "commandlineparser.h"
+#include "backend/nvaddress.h"
 
+#include <QCoreApplication>
 #include <QCommandLineParser>
 #include <QRegularExpression>
 
@@ -46,7 +48,13 @@ public:
             showInfo(helpText());
         }
         if (isSet("version")) {
-            showVersion();
+            // Like showVersion(), plus Dusk's capability markers on stdout,
+            // where Dusk looks for them. The fork's startup banner on stderr
+            // is a log line and is not reliably there on every platform.
+            showInfo(QString("%1 %2\n"
+                             "Dusk fork: add-host available")
+                     .arg(QCoreApplication::applicationName(),
+                          QCoreApplication::applicationVersion()));
         }
     }
 
@@ -67,6 +75,14 @@ public:
     {
         showMessage(message, Info);
         exit(0);
+    }
+
+    // One line on stderr and exit 1, without the help text, for actions
+    // whose caller is a program reading a single error line.
+    [[ noreturn ]] void showErrorLine(QString message) const
+    {
+        showMessage(message, Error);
+        exit(1);
     }
 
     [[ noreturn ]] void showError(QString message) const
@@ -161,6 +177,7 @@ GlobalCommandLineParser::ParseResult GlobalCommandLineParser::parse(const QStrin
         "  quit            Quit the currently running app\n"
         "  stream          Start streaming an app\n"
         "  pair            Pair a new host\n"
+        "  add-host        Record a host as paired, given its certificate\n"
         "\n"
         "See 'moonlight <action> --help' for help of specific action."
     );
@@ -192,6 +209,8 @@ GlobalCommandLineParser::ParseResult GlobalCommandLineParser::parse(const QStrin
                 return PairRequested;
             } else if (action == "list") {
                 return ListRequested;
+            } else if (action == "add-host") {
+                return AddHostRequested;
             }
         }
 
@@ -590,4 +609,97 @@ bool ListCommandLineParser::isPrintCSV() const
 bool ListCommandLineParser::isVerbose() const
 {
     return m_Verbose;
+}
+
+AddHostCommandLineParser::AddHostCommandLineParser()
+    : m_Port(DEFAULT_HTTP_PORT)
+{
+}
+
+AddHostCommandLineParser::~AddHostCommandLineParser()
+{
+}
+
+void AddHostCommandLineParser::parse(const QStringList &args)
+{
+    CommandLineParser parser;
+    parser.setupCommonOptions();
+    parser.setApplicationDescription(
+        "\n"
+        "Record a host as paired, pinning the given server certificate,\n"
+        "without a PIN. An existing entry with the same UUID is updated.\n"
+        "\n"
+        "Exit status: 0 stored, 1 failed, 2 another instance is running."
+    );
+    parser.addPositionalArgument("add-host", "record a paired host");
+    parser.addPositionalArgument("address", "Host IP address or hostname", "<address>");
+
+    parser.addValueOption("uuid", "the host's unique ID");
+    parser.addValueOption("name", "the host's name");
+    parser.addValueOption("server-cert", "the path to the host's PEM server certificate");
+    parser.addValueOption("port", "the host's HTTP port");
+
+    if (!parser.parse(args)) {
+        parser.showErrorLine(parser.errorText());
+    }
+
+    if (!parser.unknownOptionNames().isEmpty()) {
+        parser.showErrorLine(QString("Unknown options: %1").arg(parser.unknownOptionNames().join(", ")));
+    }
+
+    // This method will not return and terminates the process if --version or
+    // --help is specified
+    parser.handleHelpAndVersionOptions();
+
+    auto posArgs = parser.positionalArguments();
+    if (posArgs.length() < 2 || posArgs.at(1).trimmed().isEmpty()) {
+        parser.showErrorLine("Host address not provided");
+    }
+    if (posArgs.length() > 2) {
+        parser.showErrorLine(QString("Unexpected argument: %1").arg(posArgs.at(2)));
+    }
+    m_Address = posArgs.at(1).trimmed();
+
+    for (const char* name : {"uuid", "name", "server-cert"}) {
+        if (parser.value(name).trimmed().isEmpty()) {
+            parser.showErrorLine(QString("--%1 not provided").arg(name));
+        }
+    }
+    m_Uuid = parser.value("uuid").trimmed();
+    m_Name = parser.value("name").trimmed();
+    m_ServerCertPath = parser.value("server-cert");
+
+    if (parser.isSet("port")) {
+        bool ok;
+        uint port = parser.value("port").toUInt(&ok);
+        if (!ok || port == 0 || port > 65535) {
+            parser.showErrorLine(QString("Invalid port value: %1").arg(parser.value("port")));
+        }
+        m_Port = (uint16_t)port;
+    }
+}
+
+QString AddHostCommandLineParser::getAddress() const
+{
+    return m_Address;
+}
+
+QString AddHostCommandLineParser::getUuid() const
+{
+    return m_Uuid;
+}
+
+QString AddHostCommandLineParser::getName() const
+{
+    return m_Name;
+}
+
+QString AddHostCommandLineParser::getServerCertPath() const
+{
+    return m_ServerCertPath;
+}
+
+uint16_t AddHostCommandLineParser::getPort() const
+{
+    return m_Port;
 }

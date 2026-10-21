@@ -43,6 +43,7 @@
 #include "cli/quitstream.h"
 #include "cli/startstream.h"
 #include "cli/pair.h"
+#include "cli/addhost.h"
 #include "cli/commandlineparser.h"
 #include "path.h"
 #include "utils.h"
@@ -525,6 +526,7 @@ int main(int argc, char *argv[])
     // is a real question when something does not appear -- and the answer
     // should be in the log rather than inferred.
     qInfo() << "Dusk fork: in-stream overlay menu available (Ctrl+Alt+Shift+O)";
+    qInfo() << "Dusk fork: add-host available";
 
 #if defined(Q_OS_WIN32)
     // Force AntiHooking.dll to be statically imported and loaded
@@ -839,8 +841,33 @@ int main(int argc, char *argv[])
         // Don't log to the console since it will jumble the command output
         s_SuppressVerboseOutput = true;
         break;
+    case GlobalCommandLineParser::AddHostRequested:
+        // Its caller reads a single error line from stderr
+        s_SuppressVerboseOutput = true;
+        break;
     default:
         break;
+    }
+
+    // Dusk: every mode that can save the host list holds the client lock for
+    // its lifetime, so add-host can tell a client is running. If another
+    // process already holds it, carry on exactly as before -- this never
+    // stops a client from starting. add-host takes the lock itself and
+    // returns before anything else here runs.
+    QScopedPointer<QLockFile> clientLock;
+    if (commandLineParserResult == GlobalCommandLineParser::AddHostRequested) {
+        AddHostCommandLineParser addHostParser;
+        addHostParser.parse(app.arguments());
+        int addHostResult = CliAddHost::run(addHostParser);
+
+        qInstallMessageHandler(nullptr);
+        s_LoggerThread.waitForDone();
+        fflush(stderr);
+        fflush(stdout);
+        return addHostResult;
+    }
+    else {
+        clientLock.reset(CliAddHost::takeClientLockIfFree());
     }
 
     SDL_version compileVersion;
@@ -1059,6 +1086,10 @@ int main(int argc, char *argv[])
             hasGUI = false;
             break;
         }
+    case GlobalCommandLineParser::AddHostRequested:
+        // Handled and returned from above
+        Q_UNREACHABLE();
+        break;
     }
 
     if (hasGUI) {
