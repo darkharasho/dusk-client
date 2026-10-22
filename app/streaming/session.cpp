@@ -579,6 +579,10 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_UnexpectedTermination(true), // Failure prior to streaming is unexpected
       m_InputHandler(nullptr),
       m_DuskChannel(nullptr),
+      m_ClipboardBaselinePending(false),
+      m_NoticeShowing(false),
+      m_NoticePrevEnabled(false),
+      m_NoticeTimer(0),
       m_MouseEmulationRefCount(0),
       m_FlushingWindowEventsRef(0),
       m_ShouldExit(false),
@@ -1816,6 +1820,14 @@ void Session::sendClipboardToDusk()
         return;
     }
 
+    if (m_ClipboardBaselinePending) {
+        // First look at a clipboard that was unreadable at stream start:
+        // it predates the stream, so it is the baseline, not news.
+        m_ClipboardBaselinePending = false;
+        m_ClipboardLastSynced = text;
+        return;
+    }
+
     m_ClipboardLastSynced = text;
     m_DuskChannel->sendClipboard(QString::fromUtf8(text));
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
@@ -1827,6 +1839,9 @@ void Session::applyClipboardFromDusk(const QByteArray& text)
     if (text.isEmpty()) {
         return;
     }
+
+    // Whatever was there before is now overwritten on purpose.
+    m_ClipboardBaselinePending = false;
 
     if (SDL_SetClipboardText(text.constData()) != 0) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
@@ -1845,11 +1860,43 @@ void Session::applyClipboardFromDusk(const QByteArray& text)
 
 void Session::showDuskNotice(const QByteArray& text)
 {
+    if (m_MouseEmulationRefCount > 0) {
+        // Mouse emulation is using the slot; upstream yields to it too.
+        return;
+    }
+
+    if (!m_NoticeShowing) {
+        m_NoticePrevEnabled = m_OverlayManager.isOverlayEnabled(Overlay::OverlayStatusUpdate);
+        m_NoticePrevText = QByteArray(m_OverlayManager.getOverlayText(Overlay::OverlayStatusUpdate));
+        m_NoticeShowing = true;
+    }
+
     m_OverlayManager.updateOverlayText(Overlay::OverlayStatusUpdate, text.constData());
+    // As stored (it may have been truncated), so we can tell it is still ours.
+    m_NoticeText = QByteArray(m_OverlayManager.getOverlayText(Overlay::OverlayStatusUpdate));
     m_OverlayManager.setOverlayState(Overlay::OverlayStatusUpdate, true);
 
+    if (m_NoticeTimer != 0) {
+        SDL_RemoveTimer(m_NoticeTimer);
+    }
     uintptr_t serial = ++s_DuskNoticeSerial;
-    SDL_AddTimer(DUSK_NOTICE_MS, duskNoticeTimerCallback, (void*)serial);
+    m_NoticeTimer = SDL_AddTimer(DUSK_NOTICE_MS, duskNoticeTimerCallback, (void*)serial);
+}
+
+void Session::endDuskNotice()
+{
+    if (!m_NoticeShowing) {
+        return;
+    }
+    m_NoticeShowing = false;
+
+    // If something else has taken the slot since, it is theirs now.
+    if (QByteArray(m_OverlayManager.getOverlayText(Overlay::OverlayStatusUpdate)) != m_NoticeText) {
+        return;
+    }
+
+    m_OverlayManager.updateOverlayText(Overlay::OverlayStatusUpdate, m_NoticePrevText.constData());
+    m_OverlayManager.setOverlayState(Overlay::OverlayStatusUpdate, m_NoticePrevEnabled);
 }
 
 void Session::exec()
@@ -2040,7 +2087,10 @@ void Session::exec()
         // not sent until it changes.
         char* current = SDL_GetClipboardText();
         m_ClipboardLastSynced = QByteArray(current);
+        m_ClipboardBaselinePending = m_ClipboardLastSynced.isEmpty();
         SDL_free(current);
+        // A timer from an earlier stream must not hide this one's overlay.
+        s_DuskNoticeSerial++;
     }
 
     // Switch to async logging mode when we enter the SDL loop
@@ -2137,7 +2187,8 @@ void Session::exec()
                     if (event.user.code == SDL_CODE_DUSK_NOTICE_CLEAR) {
                         // Only the newest notice's timer may hide it.
                         if ((uintptr_t)event.user.data2 == s_DuskNoticeSerial) {
-                            m_OverlayManager.setOverlayState(Overlay::OverlayStatusUpdate, false);
+                            m_NoticeTimer = 0;
+                            endDuskNotice();
                         }
                     }
                     else if (text != nullptr && m_DuskChannel != nullptr) {
@@ -2430,6 +2481,14 @@ void Session::exec()
     }
 
 DispatchDeferredCleanup:
+    // A pending notice timer would otherwise fire into a later stream.
+    if (m_NoticeTimer != 0) {
+        SDL_RemoveTimer(m_NoticeTimer);
+        m_NoticeTimer = 0;
+    }
+    s_DuskNoticeSerial++;
+    m_NoticeShowing = false;
+
     // Tell Dusk first: it is waiting on this to put the card back, and
     // nothing below needs the channel.
     delete m_DuskChannel;

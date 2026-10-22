@@ -139,6 +139,7 @@ public:
     void sendClipboardToDusk();
     void applyClipboardFromDusk(const QByteArray& text);
     void showDuskNotice(const QByteArray& text);
+    void endDuskNotice();
 
     void setShouldExit(bool quitHostApp = false);
 
@@ -283,6 +284,17 @@ private:
     // and after each send. One value, so copying x, then y on the host, then
     // x again still sends the second x.
     QByteArray m_ClipboardLastSynced;
+    // Set when the stream-start read came back empty. Some platforms (native
+    // Wayland) only learn the clipboard once the window has focus, so the
+    // first later read is taken as the baseline instead of being sent.
+    bool m_ClipboardBaselinePending;
+    // The status overlay slot is shared with upstream's messages. While a
+    // Dusk notice is up, what it replaced is kept here to put back.
+    bool m_NoticeShowing;
+    bool m_NoticePrevEnabled;
+    QByteArray m_NoticePrevText;
+    QByteArray m_NoticeText;
+    SDL_TimerID m_NoticeTimer;
     int m_MouseEmulationRefCount;
     int m_FlushingWindowEventsRef;
     QStringList m_LaunchWarnings;
