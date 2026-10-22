@@ -1830,8 +1830,8 @@ void Session::sendClipboardToDusk()
 
     m_ClipboardLastSynced = text;
     m_DuskChannel->sendClipboard(QString::fromUtf8(text));
-    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                "Dusk: sent clipboard (%d bytes)", (int)text.size());
+    // No length: it can give away how long a password is.
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Dusk: sent clipboard");
 }
 
 void Session::applyClipboardFromDusk(const QByteArray& text)
@@ -1854,8 +1854,8 @@ void Session::applyClipboardFromDusk(const QByteArray& text)
     char* current = SDL_GetClipboardText();
     m_ClipboardLastSynced = (current != nullptr && current[0] != '\0') ? QByteArray(current) : text;
     SDL_free(current);
-    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                "Dusk: applied clipboard (%d bytes)", (int)text.size());
+    // No length: it can give away how long a password is.
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Dusk: applied clipboard");
 }
 
 void Session::showDuskNotice(const QByteArray& text)
