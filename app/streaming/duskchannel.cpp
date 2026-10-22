@@ -165,6 +165,16 @@ private:
                             qPrintable(message.value("id").toString()));
             }
         }
+        else if (type == "clipboard") {
+            // Only plain text is understood; other formats are from a newer
+            // Dusk. The text is deliberately kept out of every log line.
+            if (message.value("format").toString() == "text") {
+                pushTextEvent(SDL_CODE_DUSK_CLIPBOARD, message.value("text").toString());
+            }
+        }
+        else if (type == "notice") {
+            pushTextEvent(SDL_CODE_DUSK_NOTICE, message.value("text").toString());
+        }
         else if (type == "set_quality") {
             // Changing quality in flight means renegotiating the stream,
             // which this client cannot do yet. Said rather than silently
@@ -184,6 +194,22 @@ private:
         event.user.code = code;
         event.user.data1 = (void*)(intptr_t)value;
         SDL_PushEvent(&event);
+    }
+
+    // The text goes in a heap QByteArray the stream loop deletes. If the
+    // event never makes it onto the queue, nobody else will, so it goes here.
+    static void pushTextEvent(int code, const QString& text)
+    {
+        QByteArray* payload = new QByteArray(text.toUtf8());
+
+        SDL_Event event;
+        SDL_zero(event);
+        event.type = SDL_USEREVENT;
+        event.user.code = code;
+        event.user.data1 = payload;
+        if (SDL_PushEvent(&event) < 0) {
+            delete payload;
+        }
     }
 
     QString m_Endpoint;
@@ -275,6 +301,15 @@ void DuskChannel::sendStats(double fps, double bitrateKbps, double rttMs,
     if (packetLossPercent >= 0) {
         message["packetLoss"] = packetLossPercent;
     }
+    post(encode(message));
+}
+
+void DuskChannel::sendClipboard(const QString& text)
+{
+    QJsonObject message;
+    message["type"] = "clipboard";
+    message["format"] = "text";
+    message["text"] = text;
     post(encode(message));
 }
 

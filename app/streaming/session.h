@@ -135,6 +135,11 @@ public:
 
     void flushWindowEvents();
 
+    /// Dusk's clipboard sync. Main thread only, as SDL's clipboard requires.
+    void sendClipboardToDusk();
+    void applyClipboardFromDusk(const QByteArray& text);
+    void showDuskNotice(const QByteArray& text);
+
     void setShouldExit(bool quitHostApp = false);
 
 signals:
@@ -273,6 +278,11 @@ private:
     bool m_UnexpectedTermination;
     SdlInputHandler* m_InputHandler;
     DuskChannel* m_DuskChannel;
+    // The clipboard text (UTF-8) as of the last time the two machines were
+    // known to agree: when the stream started, when Dusk's text was applied,
+    // and after each send. One value, so copying x, then y on the host, then
+    // x again still sends the second x.
+    QByteArray m_ClipboardLastSynced;
     int m_MouseEmulationRefCount;
     int m_FlushingWindowEventsRef;
     QStringList m_LaunchWarnings;

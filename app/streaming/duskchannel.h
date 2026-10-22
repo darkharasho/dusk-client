@@ -36,6 +36,14 @@ namespace DuskChannelPrivate { class Link; }
 // of upstream's, which count up from 100.
 #define SDL_CODE_DUSK_SHOW_OVERLAY 200
 #define SDL_CODE_DUSK_HOST_DISPLAY 201
+// Text for this machine's clipboard, and a line for the overlay. Both carry
+// their text in data1 as a heap QByteArray (UTF-8) that the stream loop owns
+// and deletes -- on every path that drops the event, too.
+#define SDL_CODE_DUSK_CLIPBOARD 202
+#define SDL_CODE_DUSK_NOTICE 203
+// Posted by the stream's own timer to hide a notice; data2 says which.
+#define SDL_CODE_DUSK_NOTICE_CLEAR 204
+#define DUSK_NOTICE_MS 3000
 
 class DuskChannel
 {
@@ -57,6 +65,11 @@ public:
     /// rather than a misleading zero. Safe from any thread.
     void sendStats(double fps, double bitrateKbps, double rttMs,
                    double decodeMs, double packetLossPercent);
+
+    /// Text copied on this machine, for the host's clipboard. Dusk enforces
+    /// the size limit and says so with a notice. Safe from any thread; the
+    /// text is never logged.
+    void sendClipboard(const QString& text);
 
     /// Whether Dusk has the other end. Messages sent before the connection
     /// is up are held and delivered after the handshake, so this is for

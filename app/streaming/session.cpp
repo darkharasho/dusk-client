@@ -1780,6 +1780,78 @@ void Session::interrupt()
     SDL_PushEvent(&event);
 }
 
+namespace {
+
+// Bumped for every notice shown, so a timer left over from an earlier one
+// cannot hide a later one early. Main thread only.
+uintptr_t s_DuskNoticeSerial = 0;
+
+Uint32 duskNoticeTimerCallback(Uint32, void* param)
+{
+    SDL_Event event;
+    SDL_zero(event);
+    event.type = SDL_USEREVENT;
+    event.user.code = SDL_CODE_DUSK_NOTICE_CLEAR;
+    event.user.data1 = nullptr;
+    event.user.data2 = param;
+    SDL_PushEvent(&event);
+    return 0; // one-shot
+}
+
+}
+
+void Session::sendClipboardToDusk()
+{
+    if (m_DuskChannel == nullptr || !m_DuskChannel->isConnected()) {
+        return;
+    }
+
+    char* current = SDL_GetClipboardText();
+    QByteArray text(current);
+    SDL_free(current);
+
+    // Empty means nothing copyable (or a non-text clipboard); same as the
+    // last sync means there is nothing new to say. The text is never logged.
+    if (text.isEmpty() || text == m_ClipboardLastSynced) {
+        return;
+    }
+
+    m_ClipboardLastSynced = text;
+    m_DuskChannel->sendClipboard(QString::fromUtf8(text));
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "Dusk: sent clipboard (%d bytes)", (int)text.size());
+}
+
+void Session::applyClipboardFromDusk(const QByteArray& text)
+{
+    if (text.isEmpty()) {
+        return;
+    }
+
+    if (SDL_SetClipboardText(text.constData()) != 0) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Dusk: could not set the clipboard: %s", SDL_GetError());
+        return;
+    }
+
+    // Remember what the platform now holds, which can differ from what was
+    // asked for (line endings, for one), so the echo is not sent back.
+    char* current = SDL_GetClipboardText();
+    m_ClipboardLastSynced = (current != nullptr && current[0] != '\0') ? QByteArray(current) : text;
+    SDL_free(current);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "Dusk: applied clipboard (%d bytes)", (int)text.size());
+}
+
+void Session::showDuskNotice(const QByteArray& text)
+{
+    m_OverlayManager.updateOverlayText(Overlay::OverlayStatusUpdate, text.constData());
+    m_OverlayManager.setOverlayState(Overlay::OverlayStatusUpdate, true);
+
+    uintptr_t serial = ++s_DuskNoticeSerial;
+    SDL_AddTimer(DUSK_NOTICE_MS, duskNoticeTimerCallback, (void*)serial);
+}
+
 void Session::exec()
 {
     // If the connection failed, clean up and abort the connection.
@@ -1963,6 +2035,13 @@ void Session::exec()
     // Reach back to Dusk if it launched us. Opened only once the stream is
     // really up, so every path that leaves the loop below also closes it.
     m_DuskChannel = DuskChannel::startFromEnvironment();
+    if (m_DuskChannel != nullptr) {
+        // Whatever is already on the clipboard predates the stream and is
+        // not sent until it changes.
+        char* current = SDL_GetClipboardText();
+        m_ClipboardLastSynced = QByteArray(current);
+        SDL_free(current);
+    }
 
     // Switch to async logging mode when we enter the SDL loop
     StreamUtils::enterAsyncLoggingMode();
@@ -2049,9 +2128,36 @@ void Session::exec()
             case SDL_CODE_DUSK_HOST_DISPLAY:
                 m_OverlayManager.getMenu().switchHostDisplay((int)(intptr_t)event.user.data1);
                 break;
+            case SDL_CODE_DUSK_CLIPBOARD:
+            case SDL_CODE_DUSK_NOTICE:
+            case SDL_CODE_DUSK_NOTICE_CLEAR:
+                {
+                    // Owned by this loop from the moment it was pushed.
+                    QByteArray* text = (QByteArray*)event.user.data1;
+                    if (event.user.code == SDL_CODE_DUSK_NOTICE_CLEAR) {
+                        // Only the newest notice's timer may hide it.
+                        if ((uintptr_t)event.user.data2 == s_DuskNoticeSerial) {
+                            m_OverlayManager.setOverlayState(Overlay::OverlayStatusUpdate, false);
+                        }
+                    }
+                    else if (text != nullptr && m_DuskChannel != nullptr) {
+                        if (event.user.code == SDL_CODE_DUSK_CLIPBOARD) {
+                            applyClipboardFromDusk(*text);
+                        }
+                        else {
+                            showDuskNotice(*text);
+                        }
+                    }
+                    delete text;
+                }
+                break;
             default:
                 SDL_assert(false);
             }
+            break;
+
+        case SDL_CLIPBOARDUPDATE:
+            sendClipboardToDusk();
             break;
 
         case SDL_WINDOWEVENT:
@@ -2068,6 +2174,9 @@ void Session::exec()
                     m_AudioMuted = false;
                 }
                 m_InputHandler->notifyFocusGained();
+                // Something may have been copied while another window had
+                // the focus, and not every platform says so otherwise.
+                sendClipboardToDusk();
                 break;
             case SDL_WINDOWEVENT_LEAVE:
                 m_InputHandler->notifyMouseLeave();
