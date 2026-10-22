@@ -1804,6 +1804,13 @@ Uint32 duskNoticeTimerCallback(Uint32, void* param)
 
 }
 
+namespace {
+// Same limit and wording as Dusk's own notice for the same case.
+const int DUSK_CLIPBOARD_MAX_BYTES = 1048576;
+const char DUSK_CLIPBOARD_TOO_LARGE_NOTICE[] =
+    "Too large to share \xe2\x80\x94 copies over 1 MB stay on this machine.";
+}
+
 void Session::sendClipboardToDusk()
 {
     if (m_DuskChannel == nullptr || !m_DuskChannel->isConnected()) {
