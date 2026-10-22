@@ -2102,7 +2102,12 @@ void Session::exec()
         // not sent until it changes.
         char* current = SDL_GetClipboardText();
         m_ClipboardLastSynced = QByteArray(current);
-        m_ClipboardBaselinePending = m_ClipboardLastSynced.isEmpty();
+        // Only Wayland withholds the selection until the window has focus; on
+        // other platforms an empty clipboard really is empty, so the first
+        // copy is news and must be sent.
+        const char* driver = SDL_GetCurrentVideoDriver();
+        m_ClipboardBaselinePending = m_ClipboardLastSynced.isEmpty() &&
+                                     driver != nullptr && strcmp(driver, "wayland") == 0;
         m_ClipboardUpdateSeen = false;
         SDL_free(current);
         // A timer from an earlier stream must not hide this one's overlay.
