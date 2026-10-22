@@ -288,6 +288,8 @@ private:
     // Wayland) only learn the clipboard once the window has focus, so the
     // first later read is taken as the baseline instead of being sent.
     bool m_ClipboardBaselinePending;
+    // SDL has delivered at least one SDL_CLIPBOARDUPDATE this stream.
+    bool m_ClipboardUpdateSeen = false;
     // The status overlay slot is shared with upstream's messages. While a
     // Dusk notice is up, what it replaced is kept here to put back.
     bool m_NoticeShowing;

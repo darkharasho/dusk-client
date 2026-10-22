@@ -1836,6 +1836,14 @@ void Session::sendClipboardToDusk()
     }
 
     m_ClipboardLastSynced = text;
+
+    // Dusk's control reader caps a line, so anything bigger is not sent. Said
+    // here instead, and remembered above so focus gains do not re-check it.
+    if (text.size() > DUSK_CLIPBOARD_MAX_BYTES) {
+        showDuskNotice(QByteArray(DUSK_CLIPBOARD_TOO_LARGE_NOTICE));
+        return;
+    }
+
     m_DuskChannel->sendClipboard(QString::fromUtf8(text));
     // No length: it can give away how long a password is.
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Dusk: sent clipboard");
@@ -2095,6 +2103,7 @@ void Session::exec()
         char* current = SDL_GetClipboardText();
         m_ClipboardLastSynced = QByteArray(current);
         m_ClipboardBaselinePending = m_ClipboardLastSynced.isEmpty();
+        m_ClipboardUpdateSeen = false;
         SDL_free(current);
         // A timer from an earlier stream must not hide this one's overlay.
         s_DuskNoticeSerial++;
@@ -2215,6 +2224,7 @@ void Session::exec()
             break;
 
         case SDL_CLIPBOARDUPDATE:
+            m_ClipboardUpdateSeen = true;
             sendClipboardToDusk();
             break;
 
