@@ -44,6 +44,11 @@ public:
 
     explicit NvComputer(QSettings& settings);
 
+    // Dusk: a host known only by what Dusk vouched for -- its uuid, name,
+    // address and pinned server certificate -- as if pairing had just
+    // completed. Polling fills in the rest.
+    explicit NvComputer(QString uuid, QString name, NvAddress manualAddress, QSslCertificate serverCert);
+
     void
     setRemoteAddress(QHostAddress);
 

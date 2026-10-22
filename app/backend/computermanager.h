@@ -244,6 +244,11 @@ public:
 
     void clientSideAttributeUpdated(NvComputer* computer);
 
+    // Dusk: store a host as paired with the given pinned server certificate,
+    // updating an existing entry with the same uuid in place. The write is
+    // flushed by the delayed flush thread, which the destructor waits for.
+    void addPairedHost(QString uuid, QString name, NvAddress manualAddress, QSslCertificate serverCert);
+
 signals:
     void computerStateChanged(NvComputer* computer);
 

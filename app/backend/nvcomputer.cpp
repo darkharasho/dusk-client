@@ -65,6 +65,34 @@ NvComputer::NvComputer(QSettings& settings)
     this->activeHttpsPort = 0;
 }
 
+NvComputer::NvComputer(QString uuid, QString name, NvAddress manualAddress, QSslCertificate serverCert)
+{
+    // Mirrors the defaults of the QSettings constructor for a host
+    // that has nothing stored but these four things.
+    this->name = name;
+    this->uuid = uuid;
+    this->hasCustomName = false;
+    this->localAddress = NvAddress(QString(), DEFAULT_HTTP_PORT);
+    this->remoteAddress = NvAddress(QString(), DEFAULT_HTTP_PORT);
+    this->ipv6Address = NvAddress(QString(), DEFAULT_HTTP_PORT);
+    this->manualAddress = manualAddress;
+    this->serverCert = serverCert;
+    this->isNvidiaServerSoftware = false;
+
+    this->currentGameId = 0;
+    this->pairState = PS_UNKNOWN;
+    this->state = CS_UNKNOWN;
+    this->gfeVersion = nullptr;
+    this->appVersion = nullptr;
+    this->maxLumaPixelsHEVC = 0;
+    this->serverCodecModeSupport = 0;
+    this->pendingQuit = false;
+    this->gpuModel = nullptr;
+    this->isSupportedServerVersion = true;
+    this->externalPort = this->remoteAddress.port();
+    this->activeHttpsPort = 0;
+}
+
 void NvComputer::setRemoteAddress(QHostAddress address)
 {
     QWriteLocker lock(&this->lock);

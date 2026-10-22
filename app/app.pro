@@ -169,6 +169,7 @@ SOURCES += \
     backend/nvaddress.cpp \
     backend/nvapp.cpp \
     cli/pair.cpp \
+    cli/addhost.cpp \
     main.cpp \
     backend/computerseeker.cpp \
     backend/identitymanager.cpp \
@@ -213,6 +214,7 @@ HEADERS += \
     backend/nvaddress.h \
     backend/nvapp.h \
     cli/pair.h \
+    cli/addhost.h \
     settings/compatfetcher.h \
     settings/mappingfetcher.h \
     utils.h \

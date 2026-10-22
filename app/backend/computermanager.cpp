@@ -563,6 +563,30 @@ void ComputerManager::clientSideAttributeUpdated(NvComputer* computer)
     handleComputerStateChanged(computer);
 }
 
+void ComputerManager::addPairedHost(QString uuid, QString name, NvAddress manualAddress, QSslCertificate serverCert)
+{
+    {
+        QWriteLocker lock(&m_Lock);
+
+        NvComputer* existing = m_KnownHosts.value(uuid);
+        if (existing != nullptr) {
+            QWriteLocker computerLock(&existing->lock);
+
+            // Keep a name the user chose themselves
+            if (!existing->hasCustomName) {
+                existing->name = name;
+            }
+            existing->manualAddress = manualAddress;
+            existing->serverCert = serverCert;
+        }
+        else {
+            m_KnownHosts[uuid] = new NvComputer(uuid, name, manualAddress, serverCert);
+        }
+    }
+
+    saveHosts();
+}
+
 void ComputerManager::handleAboutToQuit()
 {
     QReadLocker lock(&m_Lock);
