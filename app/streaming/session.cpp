@@ -2243,8 +2243,15 @@ void Session::exec()
                 }
                 m_InputHandler->notifyFocusGained();
                 // Something may have been copied while another window had
-                // the focus, and not every platform says so otherwise.
-                sendClipboardToDusk();
+                // the focus, and not every platform says so otherwise. Where
+                // SDL has already shown it reports changes (X11 with XFixes),
+                // the read is skipped: SDL_GetClipboardText() can block the
+                // loop for up to about a second on a slow selection owner.
+                // Wayland keeps the read, as focus is its reliable moment.
+                if (!(m_ClipboardUpdateSeen && SDL_GetCurrentVideoDriver() != nullptr &&
+                      strcmp(SDL_GetCurrentVideoDriver(), "x11") == 0)) {
+                    sendClipboardToDusk();
+                }
                 break;
             case SDL_WINDOWEVENT_LEAVE:
                 m_InputHandler->notifyMouseLeave();
@@ -2510,6 +2517,8 @@ DispatchDeferredCleanup:
     // nothing below needs the channel.
     delete m_DuskChannel;
     m_DuskChannel = nullptr;
+    // Its thread is gone, so nothing new arrives; free what it left queued.
+    DuskChannel::discardQueuedPayloads();
 
     // Switch back to synchronous logging mode
     StreamUtils::exitAsyncLoggingMode();

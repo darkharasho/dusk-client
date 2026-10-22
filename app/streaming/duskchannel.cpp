@@ -273,6 +273,19 @@ DuskChannel::~DuskChannel()
     delete m_Thread;
 }
 
+void DuskChannel::discardQueuedPayloads()
+{
+    SDL_FilterEvents([](void*, SDL_Event* event) -> int {
+        if (event->type == SDL_USEREVENT &&
+            (event->user.code == SDL_CODE_DUSK_CLIPBOARD ||
+             event->user.code == SDL_CODE_DUSK_NOTICE)) {
+            delete (QByteArray*)event->user.data1;
+            return 0; // drop it from the queue
+        }
+        return 1;
+    }, nullptr);
+}
+
 void DuskChannel::sendOverlayAction(const char* action)
 {
     QJsonObject message;

@@ -71,6 +71,11 @@ public:
     /// text is never logged.
     void sendClipboard(const QString& text);
 
+    /// Frees the text payloads of clipboard and notice events still in SDL's
+    /// queue, and drops those events. Call after the channel is destroyed,
+    /// when the stream loop will no longer be there to delete them.
+    static void discardQueuedPayloads();
+
     /// Whether Dusk has the other end. Messages sent before the connection
     /// is up are held and delivered after the handshake, so this is for
     /// deciding what to offer, not for deciding whether to send.
