@@ -96,6 +96,7 @@ private:
         ActionMinimize,
         ActionOpenDusk,
         ActionDisconnect,
+        ActionEndSession,
         ActionMax
     };
 

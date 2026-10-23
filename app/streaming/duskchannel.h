@@ -56,7 +56,8 @@ public:
     /// the thread. Blocks briefly; call it from session teardown.
     ~DuskChannel();
 
-    /// The person used the overlay: "disconnect", "settings" or "quality".
+    /// The person used the overlay: "disconnect", "end_session", "settings"
+    /// or "quality".
     /// Intents rather than commands -- Dusk decides what they mean.
     void sendOverlayAction(const char* action);
 

@@ -401,6 +401,7 @@ const char* Menu::labelFor(int index) const
     case ActionMinimize:     return "Minimise";
     case ActionOpenDusk:     return "Open Dusk";
     case ActionDisconnect:   return "Disconnect";
+    case ActionEndSession:   return "End session";
     default:                 return "";
     }
 }
@@ -494,6 +495,26 @@ void Menu::activate(int index)
         }
         {
             // Same path as the quit key combo, so there is one teardown.
+            SDL_Event event;
+            SDL_zero(event);
+            event.type = SDL_QUIT;
+            event.quit.timestamp = SDL_GetTicks();
+            SDL_PushEvent(&event);
+        }
+        break;
+
+    case ActionEndSession:
+        setMenuOpen(false);
+        // Disconnect leaves the host's session running for the next stream
+        // to resume. This closes it too, through the same path as the
+        // quit-and-exit combo, so it works whether or not Dusk is listening.
+        if (session != nullptr && session->getDuskChannel() != nullptr) {
+            session->getDuskChannel()->sendOverlayAction("end_session");
+        }
+        if (session != nullptr) {
+            session->setShouldExit(true);
+        }
+        {
             SDL_Event event;
             SDL_zero(event);
             event.type = SDL_QUIT;
