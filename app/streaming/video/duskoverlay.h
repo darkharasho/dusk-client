@@ -73,6 +73,10 @@ public:
     /// picker uses this, and so does Dusk when it asks over the channel.
     void switchHostDisplay(int index);
 
+    /// How many displays the host has, as Dusk heard it from the host.
+    /// The picker offers that many, and none at all for a single display.
+    void setHostDisplayCount(int count);
+
     /// Where the video sits inside the output surface, as 0..1 fractions of
     /// it. Renderers report it each frame; it is stored normalised so the
     /// same rect serves both the renderer's display space and window
@@ -100,8 +104,14 @@ private:
         ActionMax
     };
 
-    /// Sunshine exposes up to twelve outputs on Ctrl+Alt+Shift+F1..F12.
-    static const int k_DisplayCount = 8;
+    /// What the picker offers when Dusk has not said how many displays
+    /// the host has: a host without Dusk, or with one too old to count.
+    /// Sunshine switches between up to twelve on Ctrl+Alt+Shift+F1..F12,
+    /// and a pick past the last one it has streams that last one.
+    static const int k_FallbackDisplayCount = 8;
+
+    /// Rows on the display page, not counting Back.
+    int displayCount() const;
 
     /// The menu has two pages: the actions, and the display picker. A
     /// submenu rather than eight more rows, because the whole point of
@@ -156,6 +166,8 @@ private:
 
     bool m_MenuOpen;
     Page m_Page;
+    /// How many displays the host has; zero until Dusk says.
+    int m_HostDisplays;
     int m_Selected;
     bool m_HandleHot;
     bool m_Engaged;

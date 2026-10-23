@@ -165,6 +165,13 @@ private:
                             qPrintable(message.value("id").toString()));
             }
         }
+        else if (type == "host_displays") {
+            // Bounded by what the switch can reach: F1..F12.
+            int count = message.value("count").toInt();
+            if (count >= 1 && count <= 12) {
+                pushUserEvent(SDL_CODE_DUSK_HOST_DISPLAYS, count);
+            }
+        }
         else if (type == "clipboard") {
             // Only plain text is understood; other formats are from a newer
             // Dusk. The text is deliberately kept out of every log line.

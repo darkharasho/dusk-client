@@ -36,6 +36,7 @@ Menu::Menu(OverlayManager* manager) :
     m_Manager(manager),
     m_MenuOpen(false),
     m_Page(PageMain),
+    m_HostDisplays(0),
     m_Selected(0),
     m_HandleHot(false),
     m_Engaged(false),
@@ -177,7 +178,12 @@ int Menu::menuWidth() const
 int Menu::rowCount() const
 {
     // The display page carries a Back row on the end.
-    return m_Page == PageMain ? rowOf(ActionMax) : k_DisplayCount + 1;
+    return m_Page == PageMain ? rowOf(ActionMax) : displayCount() + 1;
+}
+
+int Menu::displayCount() const
+{
+    return m_HostDisplays > 0 ? m_HostDisplays : k_FallbackDisplayCount;
 }
 
 bool Menu::actionShown(int action) const
@@ -185,6 +191,10 @@ bool Menu::actionShown(int action) const
     if (action == ActionOpenDusk) {
         Session* session = Session::get();
         return session != nullptr && session->getDuskChannel() != nullptr;
+    }
+    if (action == ActionSwitchDisplay) {
+        // Nothing to switch to on a host with one display.
+        return m_HostDisplays != 1;
     }
     return true;
 }
@@ -335,8 +345,47 @@ void Menu::sendHostHotkey(short keyCode)
 
 void Menu::switchHostDisplay(int index)
 {
+    if (index < 0 || index >= displayCount()) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "Dusk: the host has no display %d", index + 1);
+        return;
+    }
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "Dusk: switching the host to display %d of %d%s",
+                index + 1, displayCount(),
+                m_HostDisplays > 0 ? "" : " (count not known)");
+
     // Sunshine listens for Ctrl+Alt+Shift+F1..F12 on the host.
     sendHostHotkey(0x70 /* VK_F1 */ + index);
+}
+
+void Menu::setHostDisplayCount(int count)
+{
+    if (count < 1 || count == m_HostDisplays) {
+        return;
+    }
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "Dusk: the host has %d display%s", count, count == 1 ? "" : "s");
+    m_HostDisplays = count;
+
+    if (!m_MenuOpen) {
+        return;
+    }
+
+    // The menu may be up with the old count drawn. Rows past the new end
+    // are gone, and with one display so is Switch display and its page.
+    // Losing a row moves the selection under the ones below it, so it goes
+    // back to the top rather than onto something not chosen.
+    if (count == 1) {
+        m_Page = PageMain;
+        m_Selected = 0;
+    }
+    else if (m_Selected >= rowCount()) {
+        m_Selected = rowCount() - 1;
+    }
+    repaintMenu();
 }
 
 void Menu::setMenuOpen(bool open)
@@ -382,7 +431,7 @@ const char* Menu::labelFor(int index) const
 
     if (m_Page == PageDisplays) {
         static char label[24];
-        if (index >= k_DisplayCount) {
+        if (index >= displayCount()) {
             return "Back";
         }
         SDL_snprintf(label, sizeof(label), "Display %d", index + 1);
@@ -411,7 +460,7 @@ void Menu::activate(int index)
     Session* session = Session::get();
 
     if (m_Page == PageDisplays) {
-        if (index >= k_DisplayCount) {
+        if (index >= displayCount()) {
             m_Page = PageMain;
             m_Selected = rowOf(ActionSwitchDisplay);
             repaintMenu();

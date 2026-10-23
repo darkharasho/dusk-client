@@ -44,6 +44,8 @@ namespace DuskChannelPrivate { class Link; }
 // Posted by the stream's own timer to hide a notice; data2 says which.
 #define SDL_CODE_DUSK_NOTICE_CLEAR 204
 #define DUSK_NOTICE_MS 3000
+// How many displays the host has, in data1, so the overlay offers those.
+#define SDL_CODE_DUSK_HOST_DISPLAYS 205
 
 class DuskChannel
 {
