@@ -6,7 +6,16 @@
 #include <QCoreApplication>
 #include <QTimer>
 
-#define COMPUTER_SEEK_TIMEOUT 30000
+// ComputerSeeker wakes a known host with a WoL packet before it starts
+// looking, so this budget has to cover a machine coming out of sleep —
+// POST, link negotiation, and the host service starting — not just a round
+// trip to one that is already up. At 30s it did not: a sleeping host was
+// sent a wake packet and then given up on while it was still booting,
+// reported as "Failed to connect", which reads as unreachable rather than
+// as not-awake-yet. A host that is already answering is found on the first
+// poll and never waits on this, so the longer budget is only ever spent on
+// the case that needs it.
+#define COMPUTER_SEEK_TIMEOUT 90000
 #define APP_SEEK_TIMEOUT 10000
 
 namespace CliStartStream
