@@ -433,6 +433,26 @@ void SdlInputHandler::setPointerMode(bool locked, const char* why)
                 locked ? "captured" : "free",
                 why);
 
+    // Said on screen as well as to the log, because the whole reason this
+    // feature can afford to guess is that a wrong guess is legible. A mouse
+    // that stops being a pointer with nothing to explain it is the shape of
+    // bug that costs an afternoon; one that says Dusk did it, and which key
+    // undoes it, costs a keypress.
+    //
+    // ASCII only: the overlay draws through SDL_ttf with a font that has no
+    // reason to carry punctuation we could avoid.
+    //
+    // The window is not named, because its class never left the host -- the
+    // message carries the decision alone, by design. So this says what
+    // happened and how to undo it, and the host's own log is where the class
+    // is written down.
+    if (Session* session = Session::get()) {
+        session->showDuskNotice(
+            locked ? QByteArrayLiteral("Mouse given to the focused window. "
+                                       "Ctrl+Alt+Shift+M to keep the pointer.")
+                   : QByteArrayLiteral("Pointer handed back."));
+    }
+
     // Same sequence the mouse-mode combo uses: drop capture, change the
     // mode, take it again, so SDL's relative mode is entered or left cleanly
     // rather than being switched underneath itself.
