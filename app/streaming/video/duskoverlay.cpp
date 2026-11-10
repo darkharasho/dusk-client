@@ -396,6 +396,20 @@ void Menu::setMenuOpen(bool open)
 
     m_MenuOpen = open;
     if (open) {
+        // From here handleKeyEvent swallows every key-up, so a key still held
+        // as the menu opens never has its release forwarded and the host
+        // latches it for the rest of the session. A stuck Shift is the one
+        // that gets noticed: it turns Enter into a newline in every app on
+        // the host. The latch lives in the host's input state rather than in
+        // the stream, so reconnecting does not clear it. This belongs here
+        // rather than at the call sites because the menu opens three ways --
+        // the keyboard combo, a click on the floating handle, and Dusk asking
+        // over the channel -- and only the combo used to raise.
+        Session* session = Session::s_ActiveSession;
+        if (session != nullptr && session->m_InputHandler != nullptr) {
+            session->m_InputHandler->raiseAllKeys();
+        }
+
         // Always open on the first item. Resuming where the selection was
         // left invites accidentally activating Disconnect on a blind press.
         m_Selected = 0;

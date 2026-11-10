@@ -63,12 +63,10 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                     "Detected Dusk menu toggle combo");
 
+        // The three modifiers this combo is held with are raised by
+        // Menu::setMenuOpen, which does it for every way the menu opens and
+        // not just this one.
         Session::get()->getOverlayManager().getMenu().toggleMenu();
-
-        // The combo itself is held with three modifiers down. Without this
-        // the host keeps them latched, because the key-ups are swallowed by
-        // the open menu and never forwarded.
-        raiseAllKeys();
         break;
 
     case KeyComboToggleStatsOverlay:
