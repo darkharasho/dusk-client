@@ -573,3 +573,47 @@ void SdlInputHandler::raiseAllKeys()
 
     m_KeysDown.clear();
 }
+
+void SdlInputHandler::releaseHeldModifiers()
+{
+    // Deliberately not driven by m_KeysDown, unlike raiseAllKeys. A modifier
+    // stuck on the host is stuck precisely because the two ends disagree
+    // about what is down, so the key this has to be able to release is the
+    // one this client no longer believes in -- and raiseAllKeys returns
+    // early on an empty set, which is the state that leaves behind. A key-up
+    // for a key the host does not hold is harmless, so the recovery is to
+    // send all of them and not reason about which.
+    //
+    // The codes carry 0x8000 to match what handleKeyEvent sends, since that
+    // is the only path whose key-up can go missing: sendHostHotkey pairs its
+    // own ups in the same call and cannot latch. MODIFIER_EXTENDED qualifies
+    // the keycode rather than describing held state, so it stays; the
+    // modifier byte is zero because nothing is held once this is done.
+    static const struct {
+        short keyCode;
+        char modifiers;
+    } k_Modifiers[] = {
+        { 0xA0, 0 },                 // VK_LSHIFT
+        { 0xA1, 0 },                 // VK_RSHIFT
+        { 0xA2, 0 },                 // VK_LCONTROL
+        { 0xA3, MODIFIER_EXTENDED }, // VK_RCONTROL
+        { 0xA4, 0 },                 // VK_LMENU
+        { 0xA5, MODIFIER_EXTENDED }, // VK_RMENU
+        { 0x5B, MODIFIER_EXTENDED }, // VK_LWIN
+        { 0x5C, MODIFIER_EXTENDED }, // VK_RWIN
+    };
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "Releasing every modifier on the host");
+
+    // Tracked keys first, so nothing is left in the set to be raised again
+    // later as if it were still down.
+    raiseAllKeys();
+
+    for (const auto& modifier : k_Modifiers) {
+        LiSendKeyboardEvent2(modifier.keyCode | 0x8000,
+                             KEY_ACTION_UP,
+                             modifier.modifiers,
+                             0);
+    }
+}

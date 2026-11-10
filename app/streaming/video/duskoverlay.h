@@ -97,6 +97,7 @@ private:
         ActionSwitchDisplay,
         ActionFullScreen,
         ActionReleaseMouse,
+        ActionReleaseKeys,
         ActionMinimize,
         ActionOpenDusk,
         ActionDisconnect,

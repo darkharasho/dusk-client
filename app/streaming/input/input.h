@@ -134,6 +134,11 @@ public:
 
     void raiseAllKeys();
 
+    /// Release every modifier on the host whether or not this client thinks
+    /// it is held. Recovery for a modifier stuck over there, which by
+    /// definition means the two disagree about what is down.
+    void releaseHeldModifiers();
+
     void notifyMouseLeave();
 
     void notifyFocusLost();

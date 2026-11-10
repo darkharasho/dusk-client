@@ -461,6 +461,7 @@ const char* Menu::labelFor(int index) const
     case ActionSwitchDisplay: return "Switch display";
     case ActionFullScreen:   return "Toggle full screen";
     case ActionReleaseMouse: return "Release the mouse";
+    case ActionReleaseKeys:  return "Release stuck keys";
     case ActionMinimize:     return "Minimise";
     case ActionOpenDusk:     return "Open Dusk";
     case ActionDisconnect:   return "Disconnect";
@@ -516,6 +517,24 @@ void Menu::activate(int index)
         if (Session::s_ActiveSession != nullptr &&
             Session::s_ActiveSession->m_InputHandler != nullptr) {
             Session::s_ActiveSession->m_InputHandler->setCaptureActive(false);
+        }
+        break;
+
+    case ActionReleaseKeys:
+        // The only way out of a modifier stuck on the host from inside a
+        // stream. Worth a row of its own because the alternative is knowing
+        // that a lone tap of the right modifier fixes it, and the symptom --
+        // Enter making a newline in every app over there -- does not hint at
+        // the keyboard, let alone at which key.
+        //
+        // Closing first mirrors Release the mouse, and leaves the confirmation
+        // the menu going away provides. Opening the menu raised the tracked
+        // keys already, so by here the interesting case is the untracked one,
+        // which is what releaseHeldModifiers is for.
+        setMenuOpen(false);
+        if (Session::s_ActiveSession != nullptr &&
+            Session::s_ActiveSession->m_InputHandler != nullptr) {
+            Session::s_ActiveSession->m_InputHandler->releaseHeldModifiers();
         }
         break;
 
