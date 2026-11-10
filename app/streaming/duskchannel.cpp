@@ -182,6 +182,13 @@ private:
         else if (type == "notice") {
             pushTextEvent(SDL_CODE_DUSK_NOTICE, message.value("text").toString());
         }
+        else if (type == "mouse_mode") {
+            // Dusk on the host watched its own compositor and decided. The
+            // value is a bool rather than a mode name so that this client
+            // never has to agree with Dusk about what the modes are called.
+            pushUserEvent(SDL_CODE_DUSK_POINTER,
+                          message.value("locked").toBool() ? 1 : 0);
+        }
         else if (type == "set_quality") {
             // Changing quality in flight means renegotiating the stream,
             // which this client cannot do yet. Said rather than silently

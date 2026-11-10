@@ -2202,6 +2202,9 @@ void Session::exec()
             case SDL_CODE_DUSK_HOST_DISPLAYS:
                 m_OverlayManager.getMenu().setHostDisplayCount((int)(intptr_t)event.user.data1);
                 break;
+            case SDL_CODE_DUSK_POINTER:
+                m_InputHandler->applyPointerIntent((intptr_t)event.user.data1 != 0);
+                break;
             case SDL_CODE_DUSK_CLIPBOARD:
             case SDL_CODE_DUSK_NOTICE:
             case SDL_CODE_DUSK_NOTICE_CLEAR:

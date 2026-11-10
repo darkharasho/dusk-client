@@ -90,6 +90,12 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
 
         // Recapture input
         setCaptureActive(true);
+
+        // Pressing this is a statement that following the host got it wrong,
+        // so stop following for the rest of the session. Otherwise the next
+        // thing the host reported would quietly undo the correction, which is
+        // worse than never having followed at all.
+        pinPointerMode();
         break;
 
     case KeyComboToggleCursorHide:

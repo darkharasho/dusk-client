@@ -19,6 +19,8 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_PendingMouseButtonsAllUpOnVideoRegionLeave(false),
       m_PointerRegionLockActive(false),
       m_PointerRegionLockToggledByUser(false),
+      m_PointerModePinnedByUser(false),
+      m_PointerFreePending(false),
       m_FakeMouseCaptureActive(false),
       m_KeyboardCaptureActive(false),
       m_CaptureSystemKeysMode(prefs.captureSysKeysMode),
@@ -387,6 +389,76 @@ void SdlInputHandler::warpCursorTo(int x, int y)
     if (m_Window != nullptr) {
         SDL_WarpMouseInWindow(m_Window, x, y);
     }
+}
+
+void SdlInputHandler::applyPointerIntent(bool locked)
+{
+    // A hand on the wheel wins. The host keeps reporting either way, so this
+    // reads the report and drops it rather than asking the host to stop.
+    if (m_PointerModePinnedByUser) {
+        return;
+    }
+
+    // `m_AbsoluteMouseMode` is the inverse: absolute means the pointer is
+    // free, relative means something has taken it.
+    if (locked == !m_AbsoluteMouseMode) {
+        // Already there. A repeat still clears any deferred switch, since the
+        // host has changed its mind back before the buttons came up.
+        m_PointerFreePending = false;
+        return;
+    }
+
+    if (!locked && SDL_GetMouseState(nullptr, nullptr) != 0) {
+        // Mid-drag. Defer rather than switch: the first motion after the
+        // switch would be sent as an absolute position from before it, which
+        // reads on the host as the view jumping. `handleMouseButtonEvent`
+        // finishes this once the last button is up.
+        if (!m_PointerFreePending) {
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                        "Dusk: holding the pointer until the buttons are up");
+        }
+        m_PointerFreePending = true;
+        return;
+    }
+
+    setPointerMode(locked, "the host's focused window");
+}
+
+void SdlInputHandler::setPointerMode(bool locked, const char* why)
+{
+    m_PointerFreePending = false;
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "Dusk: pointer is now %s (%s)",
+                locked ? "captured" : "free",
+                why);
+
+    // Same sequence the mouse-mode combo uses: drop capture, change the
+    // mode, take it again, so SDL's relative mode is entered or left cleanly
+    // rather than being switched underneath itself.
+    bool wasCaptured = isCaptureActive();
+    setCaptureActive(false);
+    m_AbsoluteMouseMode = !locked;
+    if (wasCaptured) {
+        setCaptureActive(true);
+    }
+
+    // Leaving relative mode queues a motion event whose position predates the
+    // switch. Raising keys is not enough; the stale position has to go too,
+    // or the host sees one jump before the first real move.
+    SDL_FlushEvent(SDL_MOUSEMOTION);
+}
+
+void SdlInputHandler::finishDeferredPointerFree()
+{
+    if (!m_PointerFreePending || m_PointerModePinnedByUser) {
+        m_PointerFreePending = false;
+        return;
+    }
+    if (SDL_GetMouseState(nullptr, nullptr) != 0) {
+        return;
+    }
+    setPointerMode(false, "the last button came up");
 }
 
 void SdlInputHandler::setCaptureActive(bool active)

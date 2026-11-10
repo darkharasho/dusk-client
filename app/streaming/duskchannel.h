@@ -46,6 +46,10 @@ namespace DuskChannelPrivate { class Link; }
 #define DUSK_NOTICE_MS 3000
 // How many displays the host has, in data1, so the overlay offers those.
 #define SDL_CODE_DUSK_HOST_DISPLAYS 205
+// Whether the host's focused window has taken the pointer, 1 or 0 in data1.
+// Dusk on the host decides; this client only applies it, and only while the
+// user has not pinned the mode by hand.
+#define SDL_CODE_DUSK_POINTER 206
 
 class DuskChannel
 {

@@ -139,6 +139,33 @@ public:
     /// definition means the two disagree about what is down.
     void releaseHeldModifiers();
 
+    /// Follow the host's focused window: `locked` means it has taken the
+    /// pointer, so send relative motion rather than absolute positions it
+    /// would ignore.
+    ///
+    /// Asymmetric on purpose. Taking the pointer happens at once, because
+    /// the motion that follows is the motion the game wants. Giving it back
+    /// waits for every mouse button to come up: a camera drag can have the
+    /// game show its cursor before the button is released, and switching
+    /// mid-drag sends a stale absolute position that jumps the view.
+    ///
+    /// Does nothing once the user has pinned the mode by hand, which outlasts
+    /// the whole session — a person who overrode this has said they know
+    /// better than the guess, and the guess is a guess.
+    void applyPointerIntent(bool locked);
+
+    /// Whether the mode is currently pinned by hand rather than followed.
+    bool pointerModePinned() const { return m_PointerModePinnedByUser; }
+
+    /// Pin the mode to whatever it is now, so the host's reports stop being
+    /// followed. Called by the mouse-mode combo: pressing it is a statement
+    /// that the guess was wrong.
+    void pinPointerMode() { m_PointerModePinnedByUser = true; }
+
+    /// Complete a switch back to a free pointer that was waiting on the
+    /// buttons. Called from the mouse paths when one comes up.
+    void finishDeferredPointerFree();
+
     void notifyMouseLeave();
 
     void notifyFocusLost();
@@ -237,6 +264,18 @@ private:
     bool m_PendingMouseButtonsAllUpOnVideoRegionLeave;
     bool m_PointerRegionLockActive;
     bool m_PointerRegionLockToggledByUser;
+
+    /// Set by the mouse-mode combo. While true the host's reports are read
+    /// and ignored, so a manual choice is never undone by the next guess.
+    bool m_PointerModePinnedByUser;
+
+    /// A switch back to a free pointer that is waiting for every mouse
+    /// button to come up. See `applyPointerIntent`.
+    bool m_PointerFreePending;
+
+    /// Change the mode and say so. `why` is a fixed string for the log, not
+    /// anything read off a window.
+    void setPointerMode(bool locked, const char* why);
 
     int m_GamepadMask;
     GamepadState m_GamepadState[MAX_GAMEPADS];

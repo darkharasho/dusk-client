@@ -37,6 +37,13 @@ void SdlInputHandler::handleMouseButtonEvent(SDL_MouseButtonEvent* event)
         return;
     }
 
+    // A switch back to a free pointer may be waiting on this button. Checked
+    // on release and before anything else returns, so a click that the
+    // overlay or the capture logic swallows still completes it.
+    if (event->state == SDL_RELEASED) {
+        finishDeferredPointerFree();
+    }
+
     // Ahead of the capture check: with the menu open the mouse is
     // deliberately released, and a click must drive the menu rather than
     // re-capture for the host.
