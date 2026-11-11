@@ -29,14 +29,26 @@ public:
     }
 
 private:
-    bool tryPollComputer(QNetworkAccessManager* nam, NvAddress address, bool& changed)
+    bool tryPollComputer(QNetworkAccessManager* nam, NvAddress address, bool& changed, QString& why)
     {
         NvHTTP http(address, 0, m_Computer->serverCert, !m_Computer->isNvidiaServerSoftware, nam);
 
         QString serverInfo;
         try {
             serverInfo = http.getServerInfo(NvHTTP::NvLogLevel::NVLL_NONE, true);
+        } catch (const std::exception& e) {
+            // Kept, where it used to be dropped. A poll is logged at
+            // NVLL_NONE because it runs every few seconds and would drown
+            // the log — but the poll that turns a machine offline is the one
+            // line anybody ever wants, and `catch (...)` threw away the
+            // sentence that said why. On 2026-11-11 a host that answered a
+            // plain `nc` every five seconds was reported offline by this
+            // loop for ninety seconds, and nothing anywhere said what the
+            // failure actually was.
+            why = QStringLiteral("%1: %2").arg(address.toString(), QString::fromUtf8(e.what()));
+            return false;
         } catch (...) {
+            why = QStringLiteral("%1: unrecognised error").arg(address.toString());
             return false;
         }
 
@@ -95,18 +107,26 @@ private:
             bool stateChanged = false;
             bool online = false;
             bool wasOnline = m_Computer->state == NvComputer::CS_ONLINE;
+            // Why each address did not answer, for the one log line below
+            // that is worth printing. Reset every pass, so it describes this
+            // failure and not an older one.
+            QStringList refusals;
             for (int i = 0; i < (wasOnline ? TRIES_BEFORE_OFFLINING : 1) && !online; i++) {
                 for (auto& address : m_Computer->uniqueAddresses()) {
                     if (isInterruptionRequested()) {
                         return;
                     }
 
-                    if (tryPollComputer(&nam, address, stateChanged)) {
+                    QString why;
+                    if (tryPollComputer(&nam, address, stateChanged, why)) {
                         if (!wasOnline) {
                             qInfo() << m_Computer->name << "is now online at" << m_Computer->activeAddress.toString();
                         }
                         online = true;
                         break;
+                    }
+                    if (!why.isEmpty() && !refusals.contains(why)) {
+                        refusals.append(why);
                     }
                 }
             }
@@ -115,7 +135,9 @@ private:
             // Note: we don't need to acquire the read lock here,
             // because we're on the writing thread.
             if (!online && m_Computer->state != NvComputer::CS_OFFLINE) {
-                qInfo() << m_Computer->name << "is now offline";
+                qInfo() << m_Computer->name << "is now offline:"
+                        << (refusals.isEmpty() ? QStringLiteral("no address to try")
+                                               : refusals.join(QStringLiteral("; ")));
                 m_Computer->state = NvComputer::CS_OFFLINE;
                 stateChanged = true;
             }
