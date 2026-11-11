@@ -1873,10 +1873,22 @@ void Session::applyClipboardFromDusk(const QByteArray& text)
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Dusk: applied clipboard");
 }
 
-void Session::showDuskNotice(const QByteArray& text)
+void Session::showDuskNotice(const QByteArray& text, const QByteArray& key,
+                             const QByteArray& detail, bool accent)
 {
     if (m_MouseEmulationRefCount > 0) {
         // Mouse emulation is using the slot; upstream yields to it too.
+        return;
+    }
+
+    // Drawn before anything is taken over, so a font that will not open
+    // leaves the slot exactly as it was rather than blank.
+    SDL_Surface* card = m_OverlayManager.getMenu().renderNotice(
+        text.constData(),
+        key.isEmpty() ? nullptr : key.constData(),
+        detail.isEmpty() ? nullptr : detail.constData(),
+        accent);
+    if (card == nullptr) {
         return;
     }
 
@@ -1886,7 +1898,12 @@ void Session::showDuskNotice(const QByteArray& text)
         m_NoticeShowing = true;
     }
 
+    // Claimed before the text is set: from here the font path leaves this
+    // overlay alone, and the text below is kept only so the slot can still
+    // be recognised as ours when the notice ends.
+    m_OverlayManager.setOverlaySurfaceOwned(Overlay::OverlayStatusUpdate, true);
     m_OverlayManager.updateOverlayText(Overlay::OverlayStatusUpdate, text.constData());
+    m_OverlayManager.setOverlaySurface(Overlay::OverlayStatusUpdate, card);
     // As stored (it may have been truncated), so we can tell it is still ours.
     m_NoticeText = QByteArray(m_OverlayManager.getOverlayText(Overlay::OverlayStatusUpdate));
     m_OverlayManager.setOverlayState(Overlay::OverlayStatusUpdate, true);
@@ -1909,6 +1926,13 @@ void Session::endDuskNotice()
     if (QByteArray(m_OverlayManager.getOverlayText(Overlay::OverlayStatusUpdate)) != m_NoticeText) {
         return;
     }
+
+    // Disabled while it is still ours, so the card's surface is dropped by
+    // the owned path rather than left under whatever comes next. Handing
+    // the slot back is the last step: after it, the font path is in charge
+    // again and Moonlight's own status text renders as it always did.
+    m_OverlayManager.setOverlayState(Overlay::OverlayStatusUpdate, false);
+    m_OverlayManager.setOverlaySurfaceOwned(Overlay::OverlayStatusUpdate, false);
 
     m_OverlayManager.updateOverlayText(Overlay::OverlayStatusUpdate, m_NoticePrevText.constData());
     m_OverlayManager.setOverlayState(Overlay::OverlayStatusUpdate, m_NoticePrevEnabled);

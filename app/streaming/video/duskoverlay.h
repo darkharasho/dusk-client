@@ -91,6 +91,25 @@ public:
     void menuOrigin(int displayWidth, int displayHeight, int surfaceWidth,
                     int surfaceHeight, int* x, int* y);
 
+    /// Draw a notice card: a line of text in a panel, with an accent bar
+    /// down its leading edge and an optional second line under it.
+    ///
+    /// Returns a surface the caller owns, or nullptr if the font would not
+    /// open -- in which case the caller should leave the old text path
+    /// alone rather than show nothing.
+    ///
+    /// `key` is drawn in the accent colour and `detail` after it in grey,
+    /// which is how a shortcut and what it does share one line. Either may
+    /// be null. `accent` false is the quiet form, for a notice that reports
+    /// something ending rather than something taken: no amber anywhere.
+    ///
+    /// The inset from the corner is transparent padding inside the surface
+    /// rather than a position, because every renderer puts this overlay
+    /// flush into the bottom-left and teaching eight of them otherwise
+    /// would be a far larger change than the look is worth.
+    SDL_Surface* renderNotice(const char* text, const char* key,
+                              const char* detail, bool accent);
+
 private:
     enum Action {
         ActionStats,
@@ -162,6 +181,9 @@ private:
 
     void drawRect(SDL_Surface* surface, int x, int y, int w, int h, SDL_Color color);
     void drawText(SDL_Surface* surface, TTF_Font* font, const char* text, int x, int y, SDL_Color color);
+    /// Clear the pixels outside a rounded rectangle, so a panel drawn with
+    /// square fills ends up with soft corners.
+    void roundCorners(SDL_Surface* surface, int x, int y, int w, int h, int radius);
 
     OverlayManager* m_Manager;
 
@@ -199,6 +221,9 @@ private:
 
     TTF_Font* m_Font;
     TTF_Font* m_TitleFont;
+    /// Larger than the menu's: a notice is read from wherever the player
+    /// is sitting, while the menu is read by someone who just clicked it.
+    TTF_Font* m_NoticeFont;
     QByteArray m_FontData;
 };
 

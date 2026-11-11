@@ -19,6 +19,22 @@ using namespace Overlay;
 #define FONT_SIZE       15
 #define TITLE_FONT_SIZE 15
 
+// The notice card. Read from the couch rather than from the mouse, so it is
+// larger than the menu, and inset from the corner rather than flush into it
+// the way the status text it replaces was.
+#define NOTICE_FONT_SIZE 19
+#define NOTICE_BAR       4
+#define NOTICE_PAD_X     16
+#define NOTICE_PAD_TOP   11
+#define NOTICE_PAD_BOT   12
+#define NOTICE_GAP       5
+#define NOTICE_RADIUS    5
+#define NOTICE_INSET     22
+// Past this the card wraps rather than growing. A notice is written by Dusk
+// and can be any length, and one wider than the window would be drawn off
+// the edge: every renderer pins this overlay to the left and lets it run.
+#define NOTICE_MAX_W     720
+
 // Far enough that a click with a shaky hand is still a click.
 #define DRAG_THRESHOLD  4
 
@@ -31,6 +47,9 @@ static const SDL_Color PANEL_BG  = {0x14, 0x16, 0x1C, 0xF0};
 static const SDL_Color HANDLE_BG = {0x14, 0x16, 0x1C, 0xC8};
 static const SDL_Color TEXT      = {0xEC, 0xEC, 0xEF, 0xFF};
 static const SDL_Color TEXT_DARK = {0x12, 0x11, 0x0C, 0xFF};
+// The second line of a notice, and the bar of one with nothing to flag.
+static const SDL_Color TEXT_MUTED = {0x9B, 0x9B, 0xA4, 0xFF};
+static const SDL_Color BAR_QUIET  = {0x4A, 0x4A, 0x53, 0xFF};
 
 Menu::Menu(OverlayManager* manager) :
     m_Manager(manager),
@@ -55,6 +74,7 @@ Menu::Menu(OverlayManager* manager) :
     m_WindowHeight(1080),
     m_Font(nullptr),
     m_TitleFont(nullptr),
+    m_NoticeFont(nullptr),
     m_FontData(Path::readDataFile("ModeSeven.ttf"))
 {
     loadPosition();
@@ -67,6 +87,9 @@ Menu::~Menu()
     }
     if (m_TitleFont != nullptr) {
         TTF_CloseFont(m_TitleFont);
+    }
+    if (m_NoticeFont != nullptr) {
+        TTF_CloseFont(m_NoticeFont);
     }
 }
 
@@ -795,6 +818,139 @@ void Menu::drawText(SDL_Surface* surface, TTF_Font* font, const char* text,
     SDL_Rect dst = { x, y, rendered->w, rendered->h };
     SDL_BlitSurface(rendered, nullptr, surface, &dst);
     SDL_FreeSurface(rendered);
+}
+
+void Menu::roundCorners(SDL_Surface* surface, int x, int y, int w, int h, int radius)
+{
+    if (radius <= 0 || surface->format->format != SDL_PIXELFORMAT_ARGB8888) {
+        return;
+    }
+
+    // Cleared rather than blended: these pixels are outside the panel, so
+    // the right answer is the frame behind it, which is what transparent
+    // means here. No anti-aliasing -- at this radius the stair-step is a
+    // pixel or two and the alternative is a rasteriser.
+    for (int row = 0; row < radius; row++) {
+        // How far in the panel edge has moved by this row, from the circle
+        // this corner is a quarter of.
+        int dy = radius - row - 1;
+        int inset = radius - (int)(SDL_sqrtf((float)(radius * radius - dy * dy)) + 0.5f);
+        if (inset <= 0) {
+            continue;
+        }
+
+        for (int corner = 0; corner < 4; corner++) {
+            bool bottom = corner >= 2;
+            bool right = (corner % 2) == 1;
+            int py = bottom ? (y + h - 1 - row) : (y + row);
+            if (py < 0 || py >= surface->h) {
+                continue;
+            }
+
+            Uint32* pixels = (Uint32*)((Uint8*)surface->pixels + py * surface->pitch);
+            for (int i = 0; i < inset; i++) {
+                int px = right ? (x + w - 1 - i) : (x + i);
+                if (px >= 0 && px < surface->w) {
+                    pixels[px] = 0;
+                }
+            }
+        }
+    }
+}
+
+SDL_Surface* Menu::renderNotice(const char* text, const char* key,
+                                const char* detail, bool accent)
+{
+    if (text == nullptr || text[0] == '\0' || !openFont()) {
+        return nullptr;
+    }
+
+    if (m_NoticeFont == nullptr) {
+        m_NoticeFont = TTF_OpenFontRW(SDL_RWFromConstMem(m_FontData.constData(), m_FontData.size()),
+                                      1, NOTICE_FONT_SIZE);
+        if (m_NoticeFont == nullptr) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                        "TTF_OpenFont() failed for the Dusk notice: %s", TTF_GetError());
+            return nullptr;
+        }
+    }
+
+    const bool hasSecond = (key != nullptr && key[0] != '\0') ||
+                           (detail != nullptr && detail[0] != '\0');
+
+    // Measured rather than guessed: the card is as wide as what it says,
+    // and what it says is written where the decision is, not here.
+    //
+    // Rendered up front rather than measured and drawn later, because a
+    // line long enough to wrap is a different height than its font's, and
+    // only the renderer knows where it broke.
+    int textW = 0, textH = 0;
+    TTF_SizeUTF8(m_NoticeFont, text, &textW, &textH);
+    SDL_Surface* primary = textW <= NOTICE_MAX_W
+        ? TTF_RenderUTF8_Blended(m_NoticeFont, text, TEXT)
+        : TTF_RenderUTF8_Blended_Wrapped(m_NoticeFont, text, TEXT, NOTICE_MAX_W);
+    if (primary == nullptr) {
+        return nullptr;
+    }
+    SDL_SetSurfaceBlendMode(primary, SDL_BLENDMODE_BLEND);
+    textW = primary->w;
+    textH = primary->h;
+
+    int keyW = 0, keyH = 0;
+    if (key != nullptr && key[0] != '\0') {
+        TTF_SizeUTF8(m_Font, key, &keyW, &keyH);
+    }
+    int detailW = 0, detailH = 0;
+    if (detail != nullptr && detail[0] != '\0') {
+        TTF_SizeUTF8(m_Font, detail, &detailW, &detailH);
+    }
+
+    const int secondW = keyW + detailW;
+    const int secondH = SDL_max(keyH, detailH);
+    const int innerW = SDL_max(textW, secondW);
+    const int innerH = textH + (hasSecond ? NOTICE_GAP + secondH : 0);
+
+    const int cardW = NOTICE_BAR + NOTICE_PAD_X + innerW + NOTICE_PAD_X;
+    const int cardH = NOTICE_PAD_TOP + innerH + NOTICE_PAD_BOT;
+
+    // The inset is transparent padding on the two edges this overlay is
+    // pushed against, so the card floats off the corner without any
+    // renderer being told where to put it.
+    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(0, NOTICE_INSET + cardW,
+                                                          cardH + NOTICE_INSET, 32,
+                                                          SDL_PIXELFORMAT_ARGB8888);
+    if (surface == nullptr) {
+        SDL_FreeSurface(primary);
+        return nullptr;
+    }
+
+    const int x = NOTICE_INSET;
+    const int y = 0;
+
+    drawRect(surface, x, y, cardW, cardH, PANEL_BG);
+    drawRect(surface, x, y, NOTICE_BAR, cardH, accent ? ACCENT : BAR_QUIET);
+    roundCorners(surface, x, y, cardW, cardH, NOTICE_RADIUS);
+
+    const int textX = x + NOTICE_BAR + NOTICE_PAD_X;
+    SDL_Rect textDst = { textX, y + NOTICE_PAD_TOP, primary->w, primary->h };
+    SDL_BlitSurface(primary, nullptr, surface, &textDst);
+    SDL_FreeSurface(primary);
+
+    if (hasSecond) {
+        const int secondY = y + NOTICE_PAD_TOP + textH + NOTICE_GAP;
+        int cursor = textX;
+        if (keyW > 0) {
+            // The shortcut carries the accent even in the quiet form: it is
+            // the one part of a notice that is worth acting on.
+            drawText(surface, m_Font, key, cursor, secondY, ACCENT);
+            cursor += keyW;
+        }
+        if (detailW > 0) {
+            drawText(surface, m_Font, detail, cursor, secondY, TEXT_MUTED);
+        }
+    }
+
+    return surface;
 }
 
 void Menu::repaintHandle()

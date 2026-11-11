@@ -446,11 +446,23 @@ void SdlInputHandler::setPointerMode(bool locked, const char* why)
     // message carries the decision alone, by design. So this says what
     // happened and how to undo it, and the host's own log is where the class
     // is written down.
+    //
+    // Two lines rather than one sentence: what happened is the thing to
+    // read at a glance, and the way to undo it is the thing to read only if
+    // the guess was wrong. Handing the pointer back takes the quiet form --
+    // nothing has been taken, so there is nothing to flag and nothing to
+    // offer.
     if (Session* session = Session::get()) {
-        session->showDuskNotice(
-            locked ? QByteArrayLiteral("Mouse given to the focused window. "
-                                       "Ctrl+Alt+Shift+M to keep the pointer.")
-                   : QByteArrayLiteral("Pointer handed back."));
+        if (locked) {
+            session->showDuskNotice(QByteArrayLiteral("Mouse given to the game"),
+                                    QByteArrayLiteral("Ctrl+Alt+Shift+M"),
+                                    QByteArrayLiteral(" keeps the pointer"),
+                                    true);
+        }
+        else {
+            session->showDuskNotice(QByteArrayLiteral("Pointer handed back"),
+                                    QByteArray(), QByteArray(), false);
+        }
     }
 
     // Same sequence the mouse-mode combo uses: drop capture, change the

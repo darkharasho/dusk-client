@@ -55,6 +55,16 @@ public:
     /// alone.
     void setOverlaySurface(OverlayType type, SDL_Surface* surface);
 
+    /// Say that a text overlay's pixels are being supplied from outside,
+    /// so the font path leaves them alone.
+    ///
+    /// `OverlayHandle` and `OverlayMenu` are always drawn this way and need
+    /// no flag. This is for `OverlayStatusUpdate`, which Dusk borrows for
+    /// its notices: it has to go back to being Moonlight's own status text
+    /// when the notice ends, so which of the two owns it is a state rather
+    /// than a property of the type.
+    void setOverlaySurfaceOwned(OverlayType type, bool owned);
+
     Menu& getMenu();
 
 private:
@@ -63,6 +73,8 @@ private:
 
     struct {
         bool enabled;
+        /// Pixels come from setOverlaySurface() rather than the font path.
+        bool surfaceOwned;
         int fontSize;
         SDL_Color color;
         char text[1024];

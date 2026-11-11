@@ -151,6 +151,11 @@ void OverlayManager::setOverlaySurface(OverlayType type, SDL_Surface* surface)
     }
 }
 
+void OverlayManager::setOverlaySurfaceOwned(OverlayType type, bool owned)
+{
+    m_Overlays[type].surfaceOwned = owned;
+}
+
 void OverlayManager::notifyOverlayUpdated(OverlayType type)
 {
     if (m_Renderer == nullptr) {
@@ -160,7 +165,11 @@ void OverlayManager::notifyOverlayUpdated(OverlayType type)
     // The menu draws its own pixels, so there is no text to render here.
     // Enabling it is a no-op because Menu::repaint() supplies the surface;
     // disabling it clears the surface so the renderer drops the texture.
-    if (type == OverlayMenu || type == OverlayHandle) {
+    //
+    // A Dusk notice borrows the status overlay the same way, for as long as
+    // it is showing: without this the next updateOverlayText() would render
+    // the card's text over the card.
+    if (type == OverlayMenu || type == OverlayHandle || m_Overlays[type].surfaceOwned) {
         if (!m_Overlays[type].enabled) {
             SDL_Surface* oldSurface = (SDL_Surface*)SDL_AtomicSetPtr(
                 (void**)&m_Overlays[type].surface, nullptr);

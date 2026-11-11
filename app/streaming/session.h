@@ -138,7 +138,16 @@ public:
     /// Dusk's clipboard sync. Main thread only, as SDL's clipboard requires.
     void sendClipboardToDusk();
     void applyClipboardFromDusk(const QByteArray& text);
-    void showDuskNotice(const QByteArray& text);
+    /// Show a notice card over the stream for a few seconds.
+    ///
+    /// `key` and `detail` are the second line: a shortcut in the accent
+    /// colour and what it does after it. `accent` false is the quiet form,
+    /// for a notice that reports something ending rather than something
+    /// being taken.
+    void showDuskNotice(const QByteArray& text,
+                        const QByteArray& key = QByteArray(),
+                        const QByteArray& detail = QByteArray(),
+                        bool accent = true);
     void endDuskNotice();
 
     void setShouldExit(bool quitHostApp = false);
