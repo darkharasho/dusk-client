@@ -50,6 +50,9 @@ namespace DuskChannelPrivate { class Link; }
 // Dusk on the host decides; this client only applies it, and only while the
 // user has not pinned the mode by hand.
 #define SDL_CODE_DUSK_POINTER 206
+// Whether the host runs Linux, in data1 (1 or 0), for the scroll workaround
+// in input/mouse.cpp.
+#define SDL_CODE_DUSK_HOST_LINUX 207
 
 class DuskChannel
 {

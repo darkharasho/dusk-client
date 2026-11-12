@@ -172,6 +172,12 @@ private:
                 pushUserEvent(SDL_CODE_DUSK_HOST_DISPLAYS, count);
             }
         }
+        else if (type == "host_os") {
+            // Only Linux changes anything; any other name, including one
+            // from a newer Dusk, leaves the workaround off.
+            pushUserEvent(SDL_CODE_DUSK_HOST_LINUX,
+                          message.value("os").toString() == "linux" ? 1 : 0);
+        }
         else if (type == "clipboard") {
             // Only plain text is understood; other formats are from a newer
             // Dusk. The text is deliberately kept out of every log line.

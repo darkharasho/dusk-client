@@ -170,6 +170,11 @@ public:
 
     void notifyFocusLost();
 
+    // Dusk fork: split the first scroll after an absolute pointer move into a
+    // one-unit step and the rest. Turned on when Dusk says the host runs
+    // Linux; see handleMouseWheelEvent for why.
+    void setScrollPriming(bool enabled);
+
     void notifyFocusGained();
 
     bool isCaptureActive();
@@ -301,6 +306,9 @@ private:
     int m_StreamWidth;
     int m_StreamHeight;
     bool m_AbsoluteMouseMode;
+    bool m_ScrollPriming;
+    bool m_PrimeNextScrollY;
+    bool m_PrimeNextScrollX;
     bool m_AbsoluteTouchMode;
     bool m_DisabledTouchFeedback;
 

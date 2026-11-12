@@ -213,6 +213,7 @@ void SdlInputHandler::handleMouseMotionEvent(SDL_MouseMotionEvent* event)
         }
         if (mouseInVideoRegion || m_MouseWasInVideoRegion || m_PendingMouseButtonsAllUpOnVideoRegionLeave) {
             LiSendMousePositionEvent((short)x, (short)y, dst.w, dst.h);
+            m_PrimeNextScrollY = m_PrimeNextScrollX = m_ScrollPriming;
         }
 
         // Adjust the cursor visibility if applicable
@@ -230,6 +231,37 @@ void SdlInputHandler::handleMouseMotionEvent(SDL_MouseMotionEvent* event)
     else {
         LiSendMouseMoveEvent(xrel, yrel);
     }
+}
+
+void SdlInputHandler::setScrollPriming(bool enabled)
+{
+    m_ScrollPriming = enabled;
+    if (!enabled) {
+        m_PrimeNextScrollY = m_PrimeNextScrollX = false;
+    }
+}
+
+// Sends one high-resolution scroll, split in two if the axis needs priming.
+//
+// Why (Dusk fork): on a Linux host under Wayland, X11 apps see the virtual
+// mouse through XWayland, which posts absolute motion from one X device and
+// scrolling from another. Chromium-based apps (Chrome, Electron apps,
+// Steam, Discord) reset their scroll position on the device switch and
+// read the next scroll only to learn where the wheel is, so the first
+// notch after every pointer move does nothing. A one-unit step in the same
+// direction is sacrificed to that instead, and the notch scrolls 119/120
+// of its usual distance. Native Wayland apps get the full notch, in two
+// pieces. Only for Linux hosts: a Windows app that divides by 120 would
+// read both pieces as zero.
+static void sendScroll(short amount, bool& prime, int (*send)(short))
+{
+    if (prime && (amount >= 2 || amount <= -2)) {
+        short step = amount > 0 ? 1 : -1;
+        send(step);
+        amount -= step;
+    }
+    prime = false;
+    send(amount);
 }
 
 void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
@@ -265,7 +297,7 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
         event->preciseY = SDL_clamp(event->preciseY, -1.0f, 1.0f);
 #endif
 
-        LiSendHighResScrollEvent((short)(event->preciseY * 120)); // WHEEL_DELTA
+        sendScroll((short)(event->preciseY * 120), m_PrimeNextScrollY, LiSendHighResScrollEvent); // WHEEL_DELTA
     }
 
     if (event->preciseX != 0.0f) {
@@ -280,7 +312,7 @@ void SdlInputHandler::handleMouseWheelEvent(SDL_MouseWheelEvent* event)
         event->preciseX = SDL_clamp(event->preciseX, -1.0f, 1.0f);
 #endif
 
-        LiSendHighResHScrollEvent((short)(event->preciseX * 120)); // WHEEL_DELTA
+        sendScroll((short)(event->preciseX * 120), m_PrimeNextScrollX, LiSendHighResHScrollEvent); // WHEEL_DELTA
     }
 #else
     if (event->y != 0) {
