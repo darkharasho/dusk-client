@@ -114,6 +114,7 @@ private:
     enum Action {
         ActionStats,
         ActionSwitchDisplay,
+        ActionSuper,
         ActionFullScreen,
         ActionReleaseMouse,
         ActionReleaseKeys,
@@ -159,6 +160,18 @@ private:
     /// shortcut prefix, and on macOS the user would have to know that
     /// Option stands in for Alt. Going through the protocol sidesteps both.
     void sendHostHotkey(short keyCode);
+
+    /// Tap Super on the host: the Windows key, which opens its Start menu
+    /// and is how someone inside a fullscreen game gets at anything else
+    /// running over there.
+    ///
+    /// A row rather than only a setting, because the setting it would
+    /// otherwise be — Dusk's *Send the Windows key to the other machine* —
+    /// pays for the key by taking it off the machine you are sitting at for
+    /// the length of the stream. This asks for one press and costs nothing
+    /// in between, and it still works where keyboard capture does not:
+    /// a Mac that has not granted it, a compositor that will not give it up.
+    void sendSuper();
 
     void setEngaged(bool engaged);
 

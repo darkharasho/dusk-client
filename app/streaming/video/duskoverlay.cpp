@@ -366,6 +366,20 @@ void Menu::sendHostHotkey(short keyCode)
     LiSendKeyboardEvent(0xA2, KEY_ACTION_UP, 0);
 }
 
+void Menu::sendSuper()
+{
+    // 0x8000 set and the modifier flagged, which is how a real Super press
+    // leaves input/keyboard.cpp. Sunshine masks the high byte off again and
+    // GFE wants it there; moonlight-common-c clears the META flag itself for
+    // the hosts that drop events carrying it, so saying it here is free.
+    const short key = 0x8000 | 0x5B /* VK_LWIN */;
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "Dusk: tapping Super on the host");
+
+    LiSendKeyboardEvent2(key, KEY_ACTION_DOWN, MODIFIER_META | MODIFIER_EXTENDED, 0);
+    LiSendKeyboardEvent2(key, KEY_ACTION_UP, MODIFIER_EXTENDED, 0);
+}
+
 void Menu::switchHostDisplay(int index)
 {
     if (index < 0 || index >= displayCount()) {
@@ -482,6 +496,7 @@ const char* Menu::labelFor(int index) const
                    ? "Hide performance stats"
                    : "Show performance stats";
     case ActionSwitchDisplay: return "Switch display";
+    case ActionSuper:        return "Super";
     case ActionFullScreen:   return "Toggle full screen";
     case ActionReleaseMouse: return "Release the mouse";
     case ActionReleaseKeys:  return "Release stuck keys";
@@ -523,6 +538,15 @@ void Menu::activate(int index)
         m_Page = PageDisplays;
         m_Selected = 0;
         repaintMenu();
+        break;
+
+    case ActionSuper:
+        // Closed before the key goes, in that order: the Start menu is a
+        // thing to click, and closing the menu is what hands the pointer
+        // back. Sent afterwards so it does not land while the overlay still
+        // has the keyboard.
+        setMenuOpen(false);
+        sendSuper();
         break;
 
     case ActionFullScreen:
